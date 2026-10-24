@@ -84,6 +84,16 @@ def build():
     # 4. Deploy to local utility folder if configured / present
     try:
         print(f"\nDeploying to User Utility directory: {UTILITY_DEST}...")
+        # Gracefully terminate any running instances of the app to prevent Windows file locking
+        try:
+            import psutil
+            for proc in psutil.process_iter(['name']):
+                if proc.info['name'] and 'Online Subtitle Generator' in proc.info['name']:
+                    proc.kill()
+                    print(f"Terminated running process: {proc.info['name']}")
+        except Exception:
+            pass
+
         UTILITY_DEST.mkdir(parents=True, exist_ok=True)
         for item in built_app_dir.iterdir():
             dest = UTILITY_DEST / item.name
@@ -95,7 +105,7 @@ def build():
                 shutil.copy2(item, dest)
         print(f"Deployment complete! Executable is ready at:\n{UTILITY_DEST / 'Online Subtitle Generator.exe'}")
     except Exception as e:
-        print(f"Note: Local utility deployment skipped or non-critical ({e}). Build in dist is ready.")
+        print(f"ERROR: Local utility deployment failed ({e}). Build in dist is ready.")
 
 
 if __name__ == "__main__":

@@ -84,16 +84,34 @@ def is_hallucination_cue(text: str) -> bool:
     if "amaraorg" in clean_lower or "amara org" in clean_lower:
         return True
 
-    # 3. Repeated multi-word phrase loops (e.g. 'Thank you very much. Thank you very much.')
-    sentences = [s.strip().lower() for s in re.split(r"[\.\?\!]+", t) if len(s.strip().split()) >= 2]
-    if len(sentences) >= 2:
-        s_counts = Counter(sentences)
-        _, top_s_cnt = s_counts.most_common(1)[0]
-        if top_s_cnt >= 2 and len(sentences) == top_s_cnt:
-            return True
+    # 3. Clause/sentence repetition loops (split on . ? ! , ; -)
+    clauses = [re.sub(r"[^a-z0-9\s]", "", c.lower()).strip() for c in re.split(r"[\.\?\!\,\;\-\–\—\n]+", t) if len(c.strip().split()) >= 2]
+    if len(clauses) >= 2:
+        c_counts = Counter(clauses)
+        top_clause, top_c_cnt = c_counts.most_common(1)[0]
+        # Ignore if clause is only allowed exclamation words
+        if not all(w in ALLOWED_DIALOGUE_REPETITIONS for w in top_clause.split()):
+            if top_c_cnt >= 2 and (top_c_cnt * len(top_clause.split())) >= len(t.split()) * 0.4:
+                return True
 
-    # 4. Token-level repetition loops
+    # 4. Multi-word phrase n-gram loops (n = 2 to 5 words, e.g. 'Thank you very much, thank you very much')
     words = [w.strip(".,!?:;\"'").lower() for w in t.split() if w.strip(".,!?:;\"'")]
+    if len(words) >= 4:
+        for n in range(2, 6):
+            if len(words) >= n * 2:
+                sliding_ngrams = [" ".join(words[i:i+n]) for i in range(len(words) - n + 1)]
+                c = Counter(sliding_ngrams)
+                top_phrase, top_cnt = c.most_common(1)[0]
+                # If top phrase consists purely of allowed dialogue words (e.g. "no no", "ha ha"), skip!
+                if all(w in ALLOWED_DIALOGUE_REPETITIONS for w in top_phrase.split()):
+                    continue
+
+                if top_cnt >= 3:
+                    return True
+                if top_cnt >= 2 and (top_cnt * n) >= len(words) * 0.4:
+                    return True
+
+    # 5. Token-level repetition loops
     if len(words) >= 3:
         max_consecutive = 1
         cur_consecutive = 1

@@ -12,6 +12,7 @@ from typing import Optional, Tuple, Any, List, Dict
 import requests
 
 from app.core.config import VERIFIED_ASR_PROVIDERS
+from app.core.config import get_active_account_index, set_active_account_index
 from app.core.credential_manager import CredentialManager
 from app.core.network_resilience import execute_with_resilience
 from app.core.subtitle_segmenter import segment_words_into_cues, resegment_cues, is_hallucination_cue
@@ -22,10 +23,10 @@ logger = logging.getLogger("OnlineSubtitleGenerator.Cloudflare")
 
 CLOUDFLARE_API_BASE = "https://api.cloudflare.com/client/v4/accounts"
 
-# Module-level sticky account index and cooldown tracking across chunks
+# Module-level sticky account index and cooldown tracking across chunks and files
 _EXHAUSTED_UNTIL: Dict[int, float] = {}
 _INVALID_ACCOUNTS: set[int] = set()
-_ACTIVE_ACCOUNT_INDEX: int = 1
+_ACTIVE_ACCOUNT_INDEX: int = get_active_account_index()
 
 
 def _parse_vtt_timestamp(ts: str) -> int:
@@ -188,6 +189,7 @@ class CloudflareASRProvider(BaseASRProvider):
 
                     if data.get("success", False) or "result" in data:
                         _ACTIVE_ACCOUNT_INDEX = idx  # Keep as sticky active account
+                        set_active_account_index(idx)
                         if idx in _EXHAUSTED_UNTIL:
                             del _EXHAUSTED_UNTIL[idx]
                         if cancel_token and hasattr(cancel_token, "notify_rate_limit_cleared"):
@@ -201,7 +203,7 @@ class CloudflareASRProvider(BaseASRProvider):
                         err_msg = "; ".join(e.get("message", "") for e in errors) if errors else "Unknown API error"
                         if "neuron" in err_msg.lower() or "limit" in err_msg.lower():
                             logger.warning(f"Cloudflare Account #{idx} quota exhausted: {err_msg}")
-                            _EXHAUSTED_UNTIL[idx] = time.time() + 3600  # 1 hour cooldown
+                            _EXHAUSTED_UNTIL[idx] = time.time() + 43200  # 12 hours cooldown (until daily quota reset)
                             continue
                         else:
                             raise RuntimeError(f"Cloudflare error on Account #{idx}: {err_msg}")
@@ -209,7 +211,7 @@ class CloudflareASRProvider(BaseASRProvider):
                 # 2. Rate limit / Quota (429)
                 elif resp.status_code == 429:
                     logger.warning(f"Cloudflare Account #{idx} returned 429 Rate Limit / Quota Exceeded.")
-                    _EXHAUSTED_UNTIL[idx] = time.time() + 3600
+                    _EXHAUSTED_UNTIL[idx] = time.time() + 43200  # 12 hours cooldown (until daily quota reset)
                     continue
 
                 # 3. Authentication failure (401 / 403)

@@ -189,9 +189,11 @@ def test_is_hallucination_cue_filters_zero_letter_and_loops():
     assert is_hallucination_cue("...") is True
     assert is_hallucination_cue("--") is True
 
-    # Repetition loops
+    # Repetition loops (both periods and commas/n-grams)
     assert is_hallucination_cue("you you you you") is True
     assert is_hallucination_cue("Thank you very much. Thank you very much. Thank you very much.") is True
+    assert is_hallucination_cue("Thank you very much, thank you very much, thank you very much, thank you very much,") is True
+    assert is_hallucination_cue("Thank you very much, thank you very much, thank you very") is True
 
     # Canned video watermarks
     assert is_hallucination_cue("Thanks for watching!") is True

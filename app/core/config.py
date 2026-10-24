@@ -131,6 +131,33 @@ def save_chunking_settings(settings: ChunkingSettings) -> None:
         pass
 
 
+def get_active_account_index() -> int:
+    """Retrieve the last successful active Cloudflare account index (1 to 10)."""
+    if SETTINGS_FILE.exists():
+        try:
+            data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+            return int(data.get("active_account_index", 1))
+        except Exception:
+            pass
+    return 1
+
+
+def set_active_account_index(index: int) -> None:
+    """Persist the active Cloudflare account index for sticky failover across sessions."""
+    try:
+        SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        existing = {}
+        if SETTINGS_FILE.exists():
+            try:
+                existing = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        existing["active_account_index"] = int(index)
+        SETTINGS_FILE.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+    except Exception:
+        pass
+
+
 # ============================================================================
 # Verified AI Providers & Model Registry
 # Date of verification: October 2026
