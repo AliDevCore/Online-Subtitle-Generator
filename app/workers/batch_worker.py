@@ -34,8 +34,12 @@ class VideoBatchWorker(QThread):
     def cancel(self):
         self.is_cancelled = True
 
-    def notify_rate_limit(self, reason: str, remaining_sec: int = 0):
-        self.rate_limit_wait.emit("Cloudflare Workers AI", remaining_sec, 1, reason)
+    def notify_rate_limit(self, provider_or_reason: str, remaining_sec: int = 0, attempt: int = 1, reason: str = ""):
+        """Supports both (reason, remaining_sec) and (provider, remaining_sec, attempt, reason) signatures."""
+        if isinstance(provider_or_reason, str) and remaining_sec > 0 and attempt == 1 and not reason:
+            self.rate_limit_wait.emit("Cloudflare Workers AI", remaining_sec, 1, provider_or_reason)
+        else:
+            self.rate_limit_wait.emit(str(provider_or_reason), int(remaining_sec), int(attempt), str(reason))
 
     def notify_rate_limit_cleared(self, provider: str = "Cloudflare Workers AI"):
         self.rate_limit_cleared.emit(provider)

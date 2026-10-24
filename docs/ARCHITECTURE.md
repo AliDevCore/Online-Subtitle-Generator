@@ -1,71 +1,71 @@
-# OnlineSub Architecture
+# Online Subtitle Generator - Architecture
 
 ```mermaid
 flowchart TD
     subgraph UI ["PySide6 Graphical Interface"]
-        MainWindow["MainWindow (English UI)"]
-        PerfDialog["PerformanceDialog"]
-        CredDialog["CredentialsDialog"]
+        MainWindow["MainWindow"]
         BatchDialog["BatchDialog"]
+        AccountDialog["CloudflareAccountDialog (Pool 1-10)"]
         LogViewer["LogViewerDialog"]
     end
 
     subgraph Workers ["Asynchronous Workers (QThread)"]
-        ASRWorker["ASRWorker (Pipeline A)"]
-        TransWorker["TranslationWorker (Pipeline B)"]
-        BatchWorker["BatchWorker (Queue)"]
+        ASRWorker["ASRWorker (Single Job)"]
+        BatchWorker["BatchWorker (Queue Management)"]
     end
 
     subgraph CoreServices ["Core Services"]
-        FFmpegSvc["FFmpegService (Probe & Audio Slice)"]
-        ASRSvc["ASRService (Pipeline A)"]
-        TransSvc["TranslationService (Pipeline B)"]
-        Chunker["AudioChunker (Overlap & Reconcile)"]
-        SRTParser["SRTParser (Validate & Serialize)"]
-        ResCtrl["ResourceController (CPU & Priority)"]
-        CredMgr["CredentialManager (Windows Credential Manager)"]
-        DB["Database (SQLite Resumability)"]
+        FFmpegSvc["FFmpegService (Audio Extraction & Slicing)"]
+        ASRSvc["ASRService (Pipeline Coordination)"]
+        Chunker["AudioChunker (5-Min Slicing & Overlap Reconciliation)"]
+        Segmenter["SubtitleSegmenter (Grammar & Orphan Rules)"]
+        CredMgr["CredentialManager (Windows DPAPI Encrypted Cache)"]
+        DB["Database (SQLite Job Tracking)"]
     end
 
-    subgraph Providers ["AI Providers & Adapters"]
-        GeminiASR["GeminiASRProvider"]
-        GeminiTrans["GeminiTranslationProvider"]
-        CF_ASR["CloudflareASRProvider"]
-        CF_Trans["CloudflareTranslationProvider"]
-        HF_ASR["HuggingFaceASRProvider"]
-        HF_Trans["HuggingFaceTranslationProvider"]
-        LocalWhisper["LocalWhisperASRProvider"]
+    subgraph CloudEngine ["Cloud Engine"]
+        CF_ASR["CloudflareASRProvider (@cf/openai/whisper)"]
+        Pool["Multi-Account Failover Pool"]
     end
 
     MainWindow --> ASRWorker
-    MainWindow --> TransWorker
     MainWindow --> BatchWorker
-    MainWindow --> PerfDialog
-    MainWindow --> CredDialog
+    MainWindow --> BatchDialog
+    MainWindow --> AccountDialog
     MainWindow --> LogViewer
 
     ASRWorker --> ASRSvc
-    TransWorker --> TransSvc
     BatchWorker --> ASRSvc
-    BatchWorker --> TransSvc
 
     ASRSvc --> FFmpegSvc
     ASRSvc --> Chunker
-    ASRSvc --> SRTParser
-    ASRSvc --> ResCtrl
+    ASRSvc --> CF_ASR
+    ASRSvc --> Segmenter
     ASRSvc --> DB
-    ASRSvc --> Providers
 
-    TransSvc --> SRTParser
-    TransSvc --> DB
-    TransSvc --> Providers
-
-    Providers --> CredMgr
+    CF_ASR --> Pool
+    Pool --> CredMgr
 ```
 
-## Architectural Design Principles
+## System Components
 
-1. **Independent Pipelines**: ASR and Translation are completely decoupled. Translation operates directly on `.srt` files and never requires media files or rerunning speech recognition.
-2. **Local vs Cloud Resource Separation**: CPU Usage Target and Process Priority are applied strictly to local FFmpeg extraction and local Faster-Whisper inference. Cloud API network requests are never throttled.
-3. **Zero Plaintext Credentials**: API keys are routed through Windows Credential Manager and redacted from all logs and diagnostics.
-4. **Resumability**: Multi-chunk operations and batch queues persist their state in SQLite (`onlinesub.db`).
+1. **User Interface (`app.ui`)**:
+   - Modern PySide6 interface with responsive layouts, time range configuration, and real-time progress reporting.
+   - Clean lifecycle management: background workers are safely stopped before window closing to avoid thread dangling.
+
+2. **ASR Service & Audio Chunker (`app.services`, `app.core.audio_chunker`)**:
+   - Slices audio streams into 5-minute chunks with 2-second overlap buffers.
+   - Automatically merges boundary cues using phrase reconciliation to eliminate duplicate sentences across chunks.
+   - Tail chunks shorter than 20 seconds are absorbed into the preceding chunk.
+
+3. **Cloudflare ASR Provider (`app.providers.cloudflare_provider`)**:
+   - Sends audio chunks to Cloudflare Workers AI Whisper endpoint.
+   - Intelligent status code handling:
+     - 401/403: Marks token invalid and aborts or skips if no valid tokens remain.
+     - 429/Quota: Places account on cooldown and switches to next pool account.
+     - 5xx/Timeout: Retries with exponential backoff up to 5 attempts.
+
+4. **Subtitle Segmenter (`app.core.subtitle_segmenter`)**:
+   - Parses raw Whisper cues.
+   - Filters silence hallucination tokens and repetitive noise.
+   - Applies natural punctuation, grammar-aware line splitting, and broadcast-standard dialogue turn formatting.

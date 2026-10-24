@@ -22,6 +22,11 @@ logger = logging.getLogger("OnlineSubtitleGenerator.Cloudflare")
 
 CLOUDFLARE_API_BASE = "https://api.cloudflare.com/client/v4/accounts"
 
+# Module-level sticky account index and cooldown tracking across chunks
+_EXHAUSTED_UNTIL: Dict[int, float] = {}
+_INVALID_ACCOUNTS: set[int] = set()
+_ACTIVE_ACCOUNT_INDEX: int = 1
+
 
 def _parse_vtt_timestamp(ts: str) -> int:
     """Parse WebVTT timestamp to milliseconds."""
@@ -115,9 +120,15 @@ class CloudflareASRProvider(BaseASRProvider):
     ) -> Dict[str, Any]:
         """
         Execute Whisper transcription using the pool of configured Cloudflare accounts.
-        If an account hits 429 or quota limit, it automatically switches to the next account.
-        Only if all accounts are exhausted does it enter the wait countdown.
+        Features:
+        - Sticky account rotation: maintains the last successful account across chunks.
+        - Cooldown tracking: skips accounts that returned 429 / quota limit until their cooldown expires.
+        - Fail-fast authentication: 401/403 marks account invalid immediately without infinite looping.
+        - Fail-fast on 4xx client errors (400, 413).
+        - Max wait cycle ceiling to prevent indefinite hangs.
         """
+        global _ACTIVE_ACCOUNT_INDEX, _EXHAUSTED_UNTIL, _INVALID_ACCOUNTS
+
         all_accounts = [a for a in CredentialManager.get_cloudflare_accounts() if a.get("configured")]
         if not all_accounts and self.account_id and self.api_key:
             all_accounts = [{"index": 1, "account_id": self.account_id, "api_key": self.api_key, "configured": True}]
@@ -125,17 +136,31 @@ class CloudflareASRProvider(BaseASRProvider):
         if not all_accounts:
             raise ValueError("No valid Cloudflare accounts configured. Please add an account in Settings.")
 
+        # Re-order accounts so that _ACTIVE_ACCOUNT_INDEX is tried first (sticky rotation)
+        sorted_accounts = sorted(
+            all_accounts,
+            key=lambda a: (0 if a["index"] == _ACTIVE_ACCOUNT_INDEX else (1 if a["index"] > _ACTIVE_ACCOUNT_INDEX else 2), a["index"])
+        )
+
         cycle = 0
+        max_wait_cycles = 5
         wait_delay = 60
 
-        while True:
-            exhausted_accounts: List[int] = []
-
-            for acct in all_accounts:
+        while cycle < max_wait_cycles:
+            for acct in sorted_accounts:
                 if cancel_token and getattr(cancel_token, "is_cancelled", False):
                     raise RuntimeError("Operation cancelled by user.")
 
                 idx = acct["index"]
+                if idx in _INVALID_ACCOUNTS:
+                    continue
+
+                # Check if account is still in cooldown
+                now = time.time()
+                if idx in _EXHAUSTED_UNTIL and now < _EXHAUSTED_UNTIL[idx]:
+                    logger.info(f"Skipping Cloudflare Account #{idx} (in quota cooldown for another {int(_EXHAUSTED_UNTIL[idx] - now)}s)...")
+                    continue
+
                 acct_id = acct["account_id"]
                 token = acct["api_key"]
 
@@ -153,10 +178,18 @@ class CloudflareASRProvider(BaseASRProvider):
                     logger.warning(f"Network error on Cloudflare Account #{idx}: {e}")
                     continue
 
+                # 1. Success 200
                 if resp.status_code == 200:
-                    data = resp.json()
-                    # Verify response payload
+                    try:
+                        data = resp.json()
+                    except Exception as json_err:
+                        logger.warning(f"Failed to parse Cloudflare JSON on Account #{idx}: {json_err}")
+                        continue
+
                     if data.get("success", False) or "result" in data:
+                        _ACTIVE_ACCOUNT_INDEX = idx  # Keep as sticky active account
+                        if idx in _EXHAUSTED_UNTIL:
+                            del _EXHAUSTED_UNTIL[idx]
                         if cancel_token and hasattr(cancel_token, "notify_rate_limit_cleared"):
                             try:
                                 cancel_token.notify_rate_limit_cleared("Cloudflare Workers AI")
@@ -166,33 +199,54 @@ class CloudflareASRProvider(BaseASRProvider):
                     else:
                         errors = data.get("errors", [])
                         err_msg = "; ".join(e.get("message", "") for e in errors) if errors else "Unknown API error"
-                        # Check if error message indicates neuron/quota limit
                         if "neuron" in err_msg.lower() or "limit" in err_msg.lower():
                             logger.warning(f"Cloudflare Account #{idx} quota exhausted: {err_msg}")
-                            exhausted_accounts.append(idx)
+                            _EXHAUSTED_UNTIL[idx] = time.time() + 3600  # 1 hour cooldown
                             continue
                         else:
                             raise RuntimeError(f"Cloudflare error on Account #{idx}: {err_msg}")
 
+                # 2. Rate limit / Quota (429)
                 elif resp.status_code == 429:
                     logger.warning(f"Cloudflare Account #{idx} returned 429 Rate Limit / Quota Exceeded.")
-                    exhausted_accounts.append(idx)
+                    _EXHAUSTED_UNTIL[idx] = time.time() + 3600
                     continue
 
+                # 3. Authentication failure (401 / 403)
                 elif resp.status_code in (401, 403):
                     logger.error(f"Cloudflare Account #{idx} authentication failed (HTTP {resp.status_code}).")
-                    exhausted_accounts.append(idx)
-                    continue
-                else:
-                    logger.warning(f"Cloudflare Account #{idx} returned HTTP {resp.status_code}: {resp.text[:200]}")
-                    exhausted_accounts.append(idx)
+                    _INVALID_ACCOUNTS.add(idx)
+                    # Check if all configured accounts are invalid
+                    valid_remaining = [a for a in all_accounts if a["index"] not in _INVALID_ACCOUNTS]
+                    if not valid_remaining:
+                        raise RuntimeError(
+                            f"Cloudflare Account #{idx} authentication failed (HTTP {resp.status_code}). "
+                            f"Please check your Account ID and API Token in Settings."
+                        )
                     continue
 
-            # If we reach here, all configured accounts failed or hit quota in this cycle
+                # 4. Client error (400, 413, etc.) - Fail fast!
+                elif 400 <= resp.status_code < 500:
+                    err_snippet = resp.text[:200]
+                    raise RuntimeError(f"Cloudflare rejected audio with HTTP {resp.status_code}: {err_snippet}")
+
+                # 5. Server error (5xx)
+                else:
+                    logger.warning(f"Cloudflare Account #{idx} returned HTTP {resp.status_code}: {resp.text[:200]}")
+                    continue
+
+            # Check if all accounts are marked invalid
+            valid_remaining = [a for a in all_accounts if a["index"] not in _INVALID_ACCOUNTS]
+            if not valid_remaining:
+                raise RuntimeError("All configured Cloudflare accounts have invalid credentials. Please update settings.")
+
             cycle += 1
+            if cycle >= max_wait_cycles:
+                break
+
             logger.warning(
-                f"All {len(all_accounts)} Cloudflare account(s) are currently rate-limited or exhausted. "
-                f"Waiting {wait_delay}s before retrying..."
+                f"All {len(valid_remaining)} Cloudflare account(s) are currently rate-limited or exhausted. "
+                f"Waiting {wait_delay}s before retrying (Attempt {cycle}/{max_wait_cycles})..."
             )
 
             for rem in range(wait_delay, 0, -1):
@@ -201,7 +255,14 @@ class CloudflareASRProvider(BaseASRProvider):
                 if cancel_token and hasattr(cancel_token, "notify_rate_limit"):
                     try:
                         cancel_token.notify_rate_limit(
-                            f"All {len(all_accounts)} Cloudflare accounts exhausted. Retrying in {rem}s...",
+                            "Cloudflare Workers AI",
+                            rem,
+                            cycle,
+                            f"All {len(valid_remaining)} Cloudflare accounts exhausted."
+                        )
+                    except TypeError:
+                        cancel_token.notify_rate_limit(
+                            f"All {len(valid_remaining)} Cloudflare accounts exhausted. Retrying in {rem}s...",
                             rem
                         )
                     except Exception:
@@ -209,6 +270,11 @@ class CloudflareASRProvider(BaseASRProvider):
                 time.sleep(1.0)
 
             wait_delay = min(wait_delay * 2, 300)
+
+        raise RuntimeError(
+            f"All Cloudflare accounts remained exhausted after {max_wait_cycles} retry attempts. "
+            f"Free tier quotas reset daily at 00:00 UTC."
+        )
 
     def transcribe(
         self,

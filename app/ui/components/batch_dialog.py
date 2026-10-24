@@ -403,3 +403,21 @@ class BatchDialog(QDialog):
         self.btn_clear_videos.setEnabled(not busy)
         self.btn_start_video.setEnabled(not busy)
         self.btn_cancel_video.setEnabled(busy)
+
+    def closeEvent(self, event):
+        if self.active_video_worker and self.active_video_worker.isRunning():
+            reply = QMessageBox.question(
+                self,
+                "Cancel Batch",
+                "Batch processing is currently in progress. Do you want to cancel and close?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self.active_video_worker.cancel()
+                self.active_video_worker.wait(1500)
+                event.accept()
+            else:
+                event.ignore()
+        else:
+            event.accept()

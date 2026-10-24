@@ -45,6 +45,14 @@ class TimeRange:
     def duration_seconds(self) -> float:
         return max(0.0, self.end_seconds - self.start_seconds)
 
+    def clamp_to_duration(self, video_duration_seconds: Optional[float]) -> TimeRange:
+        """Return a new TimeRange clamped to the media file duration."""
+        if video_duration_seconds is None or video_duration_seconds <= 0:
+            return self
+        new_start = max(0.0, min(self.start_seconds, video_duration_seconds))
+        new_end = max(new_start + 0.1, min(self.end_seconds, video_duration_seconds))
+        return TimeRange(start_seconds=new_start, end_seconds=new_end)
+
     def validate(self, video_duration_seconds: Optional[float] = None) -> tuple[bool, str]:
         if self.start_seconds < 0:
             return False, "Start time cannot be negative."
@@ -53,8 +61,12 @@ class TimeRange:
         if video_duration_seconds is not None and video_duration_seconds > 0:
             if self.start_seconds >= video_duration_seconds:
                 return False, f"Start time ({self.start_seconds / 60.0:.2f}m) exceeds video duration ({video_duration_seconds / 60.0:.2f}m)."
-            if self.end_seconds > video_duration_seconds + 0.05:  # small tolerance
+            # If user selected up to the ceil rounded minute (e.g. 25m for 24.2m video),
+            # clamp gracefully instead of rejecting!
+            if self.end_seconds > video_duration_seconds + 60.0:
                 return False, f"End time ({self.end_seconds / 60.0:.2f}m) exceeds video duration ({video_duration_seconds / 60.0:.2f}m)."
+            elif self.end_seconds > video_duration_seconds:
+                self.end_seconds = video_duration_seconds
         return True, ""
 
 

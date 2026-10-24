@@ -18,15 +18,27 @@ from app.core.config import CACHE_DIR
 
 logger = logging.getLogger("OnlineSub.FFmpeg")
 
+_SUBPROCESS_FLAGS = 0
+if sys.platform == "win32":
+    _SUBPROCESS_FLAGS = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+
 
 def _is_working_binary(bin_path: Path | str, tool_name: str) -> bool:
     """Validate that the binary actually runs and is not a broken shim or missing file."""
     try:
         p = Path(bin_path)
-        if not p.is_file():
+        if not p.is_file() or p.stat().st_size < 1024:
             return False
-        # Avoid tiny broken shims (< 1MB) unless verified
-        res = subprocess.run([str(p), "-version"], capture_output=True, text=True, timeout=4)
+        res = subprocess.run(
+            [str(p), "-version"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=8,
+            creationflags=_SUBPROCESS_FLAGS,
+            stdin=subprocess.DEVNULL
+        )
         return res.returncode == 0 and tool_name.lower() in res.stdout.lower()
     except Exception:
         return False
@@ -105,7 +117,17 @@ class FFmpegService:
                 "-show_streams",
                 str(path)
             ]
-            res = subprocess.run(cmd, capture_output=True, text=True, check=True, timeout=30)
+            res = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=30,
+                creationflags=_SUBPROCESS_FLAGS,
+                stdin=subprocess.DEVNULL,
+                encoding="utf-8",
+                errors="replace"
+            )
             data = json.loads(res.stdout)
 
             duration_sec = 0.0
@@ -153,7 +175,16 @@ class FFmpegService:
     def _probe_media_via_ffmpeg(self, path: Path) -> Dict[str, Any]:
         """Fallback media prober using 'ffmpeg -hide_banner -i <file>' stderr parsing."""
         cmd = [self.ffmpeg_path, "-hide_banner", "-i", str(path)]
-        res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        res = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            creationflags=_SUBPROCESS_FLAGS,
+            stdin=subprocess.DEVNULL,
+            encoding="utf-8",
+            errors="replace"
+        )
         output = res.stderr or res.stdout
 
         # Parse duration: Duration: 00:24:30.50, ...
@@ -258,11 +289,13 @@ class FFmpegService:
 
         proc = subprocess.Popen(
             cmd,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
-            errors="replace"
+            errors="replace",
+            creationflags=_SUBPROCESS_FLAGS
         )
 
         stderr_output = ""

@@ -37,6 +37,10 @@ class AudioChunker:
 
         while current_rel_start < total_duration_sec:
             current_rel_end = min(total_duration_sec, current_rel_start + chunk_length_sec)
+            # If the remaining tail after this chunk would be tiny (< 20s), absorb it into this chunk
+            if total_duration_sec - current_rel_end < 20.0:
+                current_rel_end = total_duration_sec
+
             actual_start = start_offset_sec + current_rel_start
             actual_end = start_offset_sec + current_rel_end
 
@@ -89,9 +93,8 @@ class AudioChunker:
                 prev.end_ms = max(prev.end_ms, cue.end_ms)
                 continue
 
-            # Case 2: Partial overlap / duplicate snippet
-            if cue.start_ms < prev.end_ms:
-                overlap_ms = prev.end_ms - cue.start_ms
+            # Case 2: Partial overlap / duplicate snippet or shared boundary phrase
+            if cue.start_ms < prev.end_ms + 1000:
                 cue_clean = cue.text.strip().lower()
                 prev_clean = prev.text.strip().lower()
 
@@ -103,11 +106,27 @@ class AudioChunker:
                     prev.end_ms = max(prev.end_ms, cue.end_ms)
                     continue
 
-                # Ensure boundaries do not collide: clamp start boundary
-                if cue.end_ms > prev.end_ms:
-                    cue.start_ms = prev.end_ms
-                else:
-                    prev.end_ms = cue.start_ms
+                # Suffix-prefix word overlap reconciliation across chunk boundaries
+                # e.g. "and then we went to the store" + "we went to the store and bought milk"
+                w_prev = prev.text.split()
+                w_cue = cue.text.split()
+                merged_phrase = None
+                for k in range(min(len(w_prev), len(w_cue)), 2, -1):
+                    if [w.lower().strip(".,!?:;") for w in w_prev[-k:]] == [w.lower().strip(".,!?:;") for w in w_cue[:k]]:
+                        merged_phrase = " ".join(w_prev + w_cue[k:])
+                        break
+
+                if merged_phrase:
+                    prev.text = merged_phrase
+                    prev.end_ms = max(prev.end_ms, cue.end_ms)
+                    continue
+
+                # Ensure non-merged boundaries do not collide: clamp start boundary
+                if cue.start_ms < prev.end_ms:
+                    if cue.end_ms > prev.end_ms:
+                        cue.start_ms = prev.end_ms
+                    else:
+                        prev.end_ms = cue.start_ms
 
             if cue.end_ms > cue.start_ms:
                 merged.append(cue)

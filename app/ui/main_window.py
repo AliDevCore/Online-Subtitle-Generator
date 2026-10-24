@@ -366,9 +366,12 @@ class MainWindow(QMainWindow):
 
             st_min = self.spin_start.value()
             end_min = self.spin_end.value()
-            time_range = TimeRange.from_minutes(float(st_min), float(end_min))
+            if self.current_video_duration > 0 and (float(end_min) * 60.0) >= self.current_video_duration:
+                time_range = TimeRange(start_seconds=float(st_min) * 60.0, end_seconds=self.current_video_duration)
+            else:
+                time_range = TimeRange.from_minutes(float(st_min), float(end_min))
 
-            out_srt = Path(video_path).with_suffix(".en.srt")
+            out_srt = self.asr_service.get_default_output_path(video_path, ".en.srt", time_range)
 
             self._set_ui_busy(True)
             self.rate_limit_frame.hide()
@@ -387,8 +390,9 @@ class MainWindow(QMainWindow):
             self.active_worker.progress.connect(self._on_progress_update)
             self.active_worker.rate_limit_wait.connect(self._on_rate_limit)
             self.active_worker.rate_limit_cleared.connect(self._on_rate_limit_cleared)
-            self.active_worker.finished.connect(self._on_asr_success)
+            self.active_worker.succeeded.connect(self._on_asr_success)
             self.active_worker.failed.connect(self._on_asr_failed)
+            self.active_worker.finished.connect(self.active_worker.deleteLater)
             self.active_worker.start()
 
         except Exception as e:
@@ -482,5 +486,24 @@ class MainWindow(QMainWindow):
 
     def _open_output_folder(self):
         if self.last_output_dir and self.last_output_dir.exists():
-            import subprocess
-            subprocess.run(["explorer", str(self.last_output_dir)])
+            from PySide6.QtGui import QDesktopServices
+            from PySide6.QtCore import QUrl
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.last_output_dir)))
+
+    def closeEvent(self, event):
+        if self.active_worker and self.active_worker.isRunning():
+            reply = QMessageBox.question(
+                self,
+                "Cancel Operation",
+                "Subtitle extraction is currently in progress. Do you want to cancel and exit?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self.active_worker.cancel()
+                self.active_worker.wait(1500)
+                event.accept()
+            else:
+                event.ignore()
+        else:
+            event.accept()

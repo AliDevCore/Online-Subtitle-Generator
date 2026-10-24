@@ -1,58 +1,37 @@
-# OnlineSub User Guide
+# Online Subtitle Generator - User Guide
 
-Welcome to **OnlineSub**! This guide walks you through extracting video audio, generating English subtitles, and translating them into natural Persian.
+Welcome to **Online Subtitle Generator**! This guide walks you through extracting audio from videos, configuring AI speech recognition, and generating clean, grammatically aligned English subtitles (`.srt`).
 
 ---
 
 ## 1. Quick Walkthrough
 
-### Step 1: Ingest Local Video
-1. Click **Browse Video...** and select a media file (`.mp4`, `.mkv`, `.avi`, `.mov`, `.webm`, etc.).
-2. The media duration and audio track details will appear automatically.
+### Step 1: Select Media File
+1. Click **Browse Video...** and choose any media file (`.mp4`, `.mkv`, `.avi`, `.mov`, `.webm`, etc.).
+2. The media duration and stream information will be detected and displayed automatically.
 
 ### Step 2: Set Time Range
-- Enter the **Start Time** and **End Time** in minutes. Decimal values are fully supported (for example, `12.5` = 12 minutes and 30 seconds).
-- Click **Entire Video** if you want to transcribe the whole file from start to finish.
-- *Timeline Guarantee*: Subtitle timestamps in the generated `.srt` will preserve the original video offset (e.g., if you choose minute 15 to 20, the first subtitle starts at `00:15:00,000`).
+- Enter the **Start Time** and **End Time** in minutes (integers).
+- Click **Entire Video** to transcribe the whole file from beginning to end.
+- Subtitle timestamps preserve the original video timeline offset.
 
-### Step 3: Choose AI Providers
-- **Pipeline A (ASR)**: Select your speech recognition model (e.g., `Gemini 2.5 Flash`, `Cloudflare Whisper`, or offline `Local Whisper Base`).
-- **Pipeline B (Translation)**: Select your translation model independently (e.g., `Gemini 2.5 Flash` or `Meta M2M100`).
-- If you haven't entered your API key yet, click **🔑 API Credentials** at the top right to configure it.
+### Step 3: Configure Cloudflare Credentials
+- Click **🔑 Cloudflare Accounts (Pool)** on the top bar.
+- Add your Cloudflare **Account ID** and **API Token** (slot 1 to 10).
+- Multiple accounts provide high-availability failover: if Account #1 reaches its daily free quota, the application automatically switches to Account #2 without halting the job.
+- Credentials are encrypted and stored securely in Windows Credential Manager.
 
 ### Step 4: Generate Subtitles
-- Click **🎬 Generate English SRT**.
-- The progress bar displays the active stage (audio slicing, chunking, AI transcription).
-- Once completed, OnlineSub will ask if you would like to translate the generated subtitle into Persian immediately.
+- Click **🎬 Generate English Subtitle**.
+- The progress bar shows real-time progress (audio extraction, 5-minute chunking, and Cloudflare Whisper transcription).
+- Once finished, the `.en.srt` file is saved beside the video file.
 
 ---
 
-## 2. Translating an Existing SRT File
+## 2. Batch Processing
 
-You do not need the original video to translate subtitles:
-1. Click **🌐 Translate Existing SRT...**.
-2. Pick any English `.srt` file from your computer.
-3. Select your desired translation model in Pipeline B.
-4. The translated file will be saved beside the source with a `.fa.srt` extension.
-
----
-
-## 3. Configuring API Credentials
-
-Click **🔑 API Credentials** on the top toolbar:
-- Enter your **Google Gemini API Key** (from [Google AI Studio](https://aistudio.google.com/)).
-- Enter your **Cloudflare API Token** & **Account ID** (from [Cloudflare Dashboard](https://dash.cloudflare.com/)).
-- Enter your **Hugging Face Token** (from [Hugging Face Settings](https://huggingface.co/settings/tokens)).
-- Click **Save to Windows Credential Manager**.
-- Keys are masked in the UI and never saved in plaintext files.
-
----
-
-## 4. Batch Processing
-
-To process multiple videos unattended:
-1. Click **📁 Process Batch...**.
-2. Click **Add Videos...** and select multiple files.
-3. Check **Translate all to Persian** if desired.
-4. Click **Accept Queue & Close**, then run the batch.
-5. If one video fails (e.g. corrupt audio), the application logs the error and safely continues processing the remaining videos.
+To process multiple video files automatically:
+1. Click **📁 Batch Folder...** on the main window.
+2. Select a folder containing your video files.
+3. Review or customize the start/end minutes for each video in the queue.
+4. Click **Start Batch**. The batch engine will process files sequentially with full failure isolation and automatic multi-account failover.

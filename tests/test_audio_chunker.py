@@ -57,3 +57,21 @@ def test_reconcile_and_merge_overlapping_cues():
     assert merged[0].index == 1
     assert merged[1].index == 2
     assert merged[2].index == 3
+
+
+def test_reconcile_phrase_overlap_across_chunks():
+    """Verify suffix-prefix word overlap merging across chunk boundaries."""
+    chunk1_cues = [
+        SubtitleCue(1, 1000, 3000, "First cue"),
+        SubtitleCue(2, 298000, 300000, "and then we went to the store")
+    ]
+    chunk2_cues = [
+        SubtitleCue(1, 299500, 302000, "we went to the store and bought milk"),
+        SubtitleCue(2, 305000, 307000, "Last cue")
+    ]
+
+    merged = AudioChunker.reconcile_and_merge_cues([chunk1_cues, chunk2_cues])
+    assert len(merged) == 3
+    assert merged[0].text == "First cue"
+    assert merged[1].text == "and then we went to the store and bought milk"
+    assert merged[2].text == "Last cue"

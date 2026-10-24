@@ -1,16 +1,15 @@
 # Changelog
 
-## [1.0.0] - 2026-10-23
+## [1.0.0] - 2026-10-24
 
 ### Added
 - Complete Windows desktop application built with PySide6.
-- Independent Speech-to-Text (ASR) and Machine Translation pipelines.
-- Multi-provider support: Google Gemini, Cloudflare Workers AI, Hugging Face Inference, Local Faster-Whisper.
-- Subtitle generation in valid SubRip (.srt) format with HH:MM:SS,mmm timestamps.
-- Decimal minute time range entry with millisecond precision and timeline offset preservation.
-- Local performance controller (CPU Usage Target 100%, Process Priority, CPU Threads, RAM Limit).
-- Strict separation between local resource controls and remote cloud API processing.
-- Windows Credential Manager integration for secure API key storage.
-- Audio chunking with overlap and chronological merge reconciliation.
-- Resumable SQLite job engine and batch processing dialog.
-- Standalone portable Windows packaging script and GitHub release workflow.
+- Cloud-hosted Speech-to-Text (ASR) via Cloudflare Workers AI Whisper (`@cf/openai/whisper`).
+- Multi-Account High-Availability Failover Pool supporting up to 10 Cloudflare accounts with automatic token switching on quota exhaustion.
+- Intelligent subtitle segmentation and punctuation formatting adhering to standard subtitle conventions.
+- Boundary overlap reconciliation to eliminate duplicate sentences across chunk boundaries.
+- Precise time range selection in minutes with automatic duration clamping.
+- Encrypted credential storage via Windows Credential Manager with thread-safe in-memory caching.
+- Batch processing dialog supporting folder queues, custom time ranges, and failure isolation.
+- Bundled static FFmpeg and FFprobe binaries with hidden console execution (`CREATE_NO_WINDOW`).
+- Portable mode support and automated GitHub Actions release packaging.

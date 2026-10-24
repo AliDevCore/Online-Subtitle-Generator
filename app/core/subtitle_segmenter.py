@@ -46,12 +46,15 @@ DISCOURSE_STARTERS = {
 }
 
 # Canned phrases commonly hallucinated by ASR models (Whisper) on silent intro/outro or music
-CANNED_HALLUCINATIONS = {
-    "thanks for watching", "thank you for watching",
-    "please subscribe", "subscribe to our channel", "subscribe to my channel",
-    "subtitles by the amaraorg community", "subtitles by the amara org community",
-    "subtitles by amaraorg", "subtitles by", "translated by", "amaraorg",
-    "the end", "the end."
+CANNED_EXACT_HALLUCINATIONS = {
+    "the end", "thanks for watching", "thank you for watching",
+    "please subscribe", "subscribe to my channel", "subscribe to our channel",
+    "amaraorg", "amara org"
+}
+
+ALLOWED_DIALOGUE_REPETITIONS = {
+    "no", "yes", "yeah", "run", "wait", "look", "stop", "please",
+    "bye", "ha", "hey", "hello", "shh", "shhh", "come", "go", "help", "oh"
 }
 
 
@@ -60,12 +63,8 @@ def is_hallucination_cue(text: str) -> bool:
     Detect whether a subtitle cue is an autoregressive hallucination
     produced by speech recognition models (like Whisper) during silence, noise, or music.
 
-    Catches:
-    1. Zero-letter outputs (e.g. '4', '-5 -5 -5 -5', '-4 -4 -4', '...', '--').
-    2. Repetitive token loops (e.g. identical token repeated >= 3 times).
-    3. Monotonous token dominance (e.g. same token accounts for >= 60% of cue words).
-    4. Repeated multi-word phrase loops (e.g. 'Thank you very much. Thank you very much.').
-    5. Canned YouTube/media outro watermarks during silent intro/outro.
+    Preserves natural dialogue expressions (e.g. 'No, no, no!', 'Run! Run! Run!',
+    'Bye bye bye', 'Ha ha ha', 'That's the end of it', 'Translated by the committee').
     """
     t = text.strip()
     if not t:
@@ -75,40 +74,52 @@ def is_hallucination_cue(text: str) -> bool:
     if not re.search(r"[a-zA-Z\u0600-\u06FF]", t):
         return True
 
-    # 2. Token-level analysis for repetition loops
-    words = [w.strip(".,!?:;\"'").lower() for w in t.split() if w.strip(".,!?:;\"'")]
-    if len(words) >= 3:
-        # Check consecutive repetition (e.g. 'you you you', '-5 -5 -5')
-        max_consecutive = 1
-        cur_consecutive = 1
-        for i in range(1, len(words)):
-            if words[i] == words[i - 1]:
-                cur_consecutive += 1
-                max_consecutive = max(max_consecutive, cur_consecutive)
-            else:
-                cur_consecutive = 1
-        if max_consecutive >= 3:
-            return True
+    clean_lower = re.sub(r"[^a-z0-9\s]", "", t.lower()).strip()
 
-        # Check dominant token
-        counts = Counter(words)
-        _, top_cnt = counts.most_common(1)[0]
-        if top_cnt / len(words) >= 0.6:
-            return True
+    # 2. Canned video outro / credit watermarks (EXACT match or credit prefix only)
+    if clean_lower in CANNED_EXACT_HALLUCINATIONS:
+        return True
+    if clean_lower.startswith(("subtitles by", "translated by", "transcribed by", "captioned by", "please subscribe", "subscribe to")):
+        return True
+    if "amaraorg" in clean_lower or "amara org" in clean_lower:
+        return True
 
     # 3. Repeated multi-word phrase loops (e.g. 'Thank you very much. Thank you very much.')
-    sentences = [s.strip().lower() for s in re.split(r"[\.\?\!]+", t) if s.strip()]
+    sentences = [s.strip().lower() for s in re.split(r"[\.\?\!]+", t) if len(s.strip().split()) >= 2]
     if len(sentences) >= 2:
         s_counts = Counter(sentences)
         _, top_s_cnt = s_counts.most_common(1)[0]
         if top_s_cnt >= 2 and len(sentences) == top_s_cnt:
             return True
 
-    # 4. Known canned video watermarks on silence
-    clean_lower = re.sub(r"[^a-z0-9\s]", "", t.lower()).strip()
-    for wm in CANNED_HALLUCINATIONS:
-        if wm in clean_lower:
-            return True
+    # 4. Token-level repetition loops
+    words = [w.strip(".,!?:;\"'").lower() for w in t.split() if w.strip(".,!?:;\"'")]
+    if len(words) >= 3:
+        max_consecutive = 1
+        cur_consecutive = 1
+        rep_word = words[0]
+        for i in range(1, len(words)):
+            if words[i] == words[i - 1]:
+                cur_consecutive += 1
+                if cur_consecutive > max_consecutive:
+                    max_consecutive = cur_consecutive
+                    rep_word = words[i]
+            else:
+                cur_consecutive = 1
+
+        # Check if the repeated word is a known natural dialogue exclamation
+        if max_consecutive >= 3:
+            if rep_word in ALLOWED_DIALOGUE_REPETITIONS and max_consecutive <= 5:
+                pass  # Legitimate dialogue ("No, no, no!", "Run! Run! Run!", "Ha ha ha ha")
+            else:
+                return True
+
+        # Check dominant token: only flag if not an allowed conversational word
+        counts = Counter(words)
+        top_word, top_cnt = counts.most_common(1)[0]
+        if top_cnt / len(words) >= 0.7 and len(words) >= 4:
+            if top_word not in ALLOWED_DIALOGUE_REPETITIONS or top_cnt > 5:
+                return True
 
     return False
 

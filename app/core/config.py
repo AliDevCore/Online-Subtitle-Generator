@@ -26,6 +26,7 @@ else:
 PORTABLE_FLAG_FILE = APP_DIR / "portable.txt"
 PORTABLE_DATA_DIR = APP_DIR / "data"
 
+# Determine user data directory with robust write-permission fallback
 if PORTABLE_FLAG_FILE.exists() or PORTABLE_DATA_DIR.exists():
     IS_PORTABLE = True
     USER_DATA_DIR = PORTABLE_DATA_DIR
@@ -37,14 +38,31 @@ else:
     else:
         USER_DATA_DIR = Path.home() / ".onlinesubtitlegenerator"
 
-USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    _test = USER_DATA_DIR / ".write_test"
+    _test.touch()
+    _test.unlink()
+except (PermissionError, OSError):
+    # Directory beside executable is write-protected (e.g. Program Files); fallback gracefully to %APPDATA%
+    IS_PORTABLE = False
+    appdata = os.environ.get("APPDATA")
+    if appdata:
+        USER_DATA_DIR = Path(appdata) / "OnlineSubtitleGenerator"
+    else:
+        USER_DATA_DIR = Path.home() / ".onlinesubtitlegenerator"
+    USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 SETTINGS_FILE = USER_DATA_DIR / "settings.json"
 DATABASE_FILE = USER_DATA_DIR / "onlinesubtitlegenerator.db"
 LOGS_DIR = USER_DATA_DIR / "logs"
 CACHE_DIR = USER_DATA_DIR / "temp"
-LOGS_DIR.mkdir(parents=True, exist_ok=True)
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+try:
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
 
 # Default performance settings
 DEFAULT_PERFORMANCE_SETTINGS = PerformanceSettings(

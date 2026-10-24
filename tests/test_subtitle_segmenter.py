@@ -206,6 +206,13 @@ def test_is_hallucination_cue_filters_zero_letter_and_loops():
     assert is_hallucination_cue("Yes.") is False
     assert is_hallucination_cue("Room 404") is False
     assert is_hallucination_cue("Call 911 immediately!") is False
+    assert is_hallucination_cue("That's the end of it.") is False
+    assert is_hallucination_cue("No, no, no, no!") is False
+    assert is_hallucination_cue("Run! Run! Run!") is False
+    assert is_hallucination_cue("Ha ha ha ha") is False
+    assert is_hallucination_cue("Bye bye bye.") is False
+    assert is_hallucination_cue("He was translated by the committee.") is False
+    assert is_hallucination_cue("At the end of the day, we won.") is False
 
 
 def test_resegment_cues_eliminates_user_reported_silence_hallucinations():

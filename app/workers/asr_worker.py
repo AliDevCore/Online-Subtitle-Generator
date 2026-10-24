@@ -22,7 +22,8 @@ class ASRWorker(QThread):
     progress_updated = Signal(str, int)  # alias for backwards compatibility
     rate_limit_wait = Signal(str, int, int, str)     # (provider, remaining_sec, attempt, reason)
     rate_limit_cleared = Signal(str)                 # (provider)
-    finished = Signal(str)               # (output_srt_path)
+    succeeded = Signal(str)              # (output_srt_path) - distinct signal that avoids shadowing QThread.finished
+    operation_finished = Signal(str)     # alias for compatibility
     failed = Signal(str)                 # (error_message)
 
     def __init__(
@@ -48,10 +49,14 @@ class ASRWorker(QThread):
     def cancel(self):
         self.is_cancelled = True
 
-    def notify_rate_limit(self, provider: str, remaining_sec: int, attempt: int, reason: str):
-        self.rate_limit_wait.emit(provider, remaining_sec, attempt, reason)
+    def notify_rate_limit(self, provider_or_reason: str, remaining_sec: int = 0, attempt: int = 1, reason: str = ""):
+        """Handles both (provider, remaining_sec, attempt, reason) and (reason, remaining_sec) signatures."""
+        if isinstance(provider_or_reason, str) and remaining_sec > 0 and attempt == 1 and not reason:
+            self.rate_limit_wait.emit("Cloudflare Workers AI", remaining_sec, 1, provider_or_reason)
+        else:
+            self.rate_limit_wait.emit(str(provider_or_reason), int(remaining_sec), int(attempt), str(reason))
 
-    def notify_rate_limit_cleared(self, provider: str):
+    def notify_rate_limit_cleared(self, provider: str = "Cloudflare Workers AI"):
         self.rate_limit_cleared.emit(provider)
 
     def run(self):
@@ -72,7 +77,8 @@ class ASRWorker(QThread):
             if self.is_cancelled:
                 self.failed.emit("Operation cancelled by user.")
             else:
-                self.finished.emit(str(out_file))
+                self.succeeded.emit(str(out_file))
+                self.operation_finished.emit(str(out_file))
         except Exception as e:
             logger.error(f"ASRWorker execution error: {e}", exc_info=True)
             self.failed.emit(str(e))

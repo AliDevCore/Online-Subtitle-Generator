@@ -109,7 +109,8 @@ class ASRService:
             self.db.update_job_status(job_id, JobStatus.FAILED, "No audio stream detected in media file.")
             raise RuntimeError("Selected video contains no audio stream.")
 
-        # Validate time range against media duration
+        # Clamp and validate time range against media duration
+        time_range = time_range.clamp_to_duration(media_info["duration_seconds"])
         valid, err = time_range.validate(media_info["duration_seconds"])
         if not valid:
             self.db.update_job_status(job_id, JobStatus.FAILED, err)
@@ -123,12 +124,6 @@ class ASRService:
         )
         model_info = provider.get_info()
 
-        # Check RAM warning for local models
-        if provider_id == "local_whisper":
-            ram_warn = self.resource_ctrl.check_ram_warning(2.0)
-            if ram_warn:
-                logger.warning(ram_warn)
-
         from app.core.config import load_chunking_settings
         chunking_cfg = load_chunking_settings()
         chunk_seconds = chunking_cfg.get_chunk_duration_seconds(provider_id)
@@ -137,128 +132,132 @@ class ASRService:
         chunk_cues_collection: List[List[SubtitleCue]] = []
         extracted_audio: Optional[Path] = None
 
-        if chunk_seconds is None or segment_duration <= chunk_seconds:
-            # Single-request processing (no chunking or within configured limit)
-            report(f"Extracting audio segment ({time_range.start_minutes:.2f}m to {time_range.end_minutes:.2f}m)...", 15)
-            self.db.update_job_status(job_id, JobStatus.EXTRACTING)
+        try:
+            if chunk_seconds is None or segment_duration <= chunk_seconds:
+                # Single-request processing (no chunking or within configured limit)
+                report(f"Extracting audio segment ({time_range.start_minutes:.2f}m to {time_range.end_minutes:.2f}m)...", 15)
+                self.db.update_job_status(job_id, JobStatus.EXTRACTING)
 
-            self.resource_ctrl.throttle_if_needed(is_local_cpu_intensive=True)
-            extracted_audio = self.ffmpeg.extract_audio_segment(
-                video_path=video,
-                start_seconds=time_range.start_seconds,
-                duration_seconds=time_range.duration_seconds,
-                output_format="mp3",
-                bitrate="64k",
-                sample_rate=16000,
-                channels=1,
-                cancel_token=cancel_token
-            )
-            self.db.update_job_status(job_id, JobStatus.TRANSCRIBING, extracted_audio_path=str(extracted_audio))
-
-            report(f"Transcribing audio with {model_info.display_name}...", 40)
-            
-            # For cloud providers, local CPU throttling is strictly skipped!
-            is_local = (provider_id == "local_whisper")
-            if is_local:
                 self.resource_ctrl.throttle_if_needed(is_local_cpu_intensive=True)
-
-            sub_file = provider.transcribe(
-                audio_path=extracted_audio,
-                start_offset_seconds=time_range.start_seconds,
-                duration_seconds=segment_duration,
-                cancel_token=cancel_token
-            )
-            chunk_cues_collection.append(sub_file.cues)
-            report("Transcription completed.", 85)
-        else:
-            # Chunked processing using user-configured chunk duration for this provider
-            chunk_length = float(chunk_seconds)
-            chunk_specs = AudioChunker.calculate_chunks(
-                total_duration_sec=segment_duration,
-                start_offset_sec=time_range.start_seconds,
-                chunk_length_sec=chunk_length,
-                overlap_sec=2.0
-            )
-
-            total_chunks = len(chunk_specs)
-            chunk_min_str = f"{chunk_length / 60.0:.1f}".rstrip("0").rstrip(".")
-            report(f"Splitting into {total_chunks} audio chunks (~{chunk_min_str} min each)...", 15)
-            self.db.update_job_status(job_id, JobStatus.TRANSCRIBING)
-
-            for idx, (actual_st, actual_end, rel_st, rel_end) in enumerate(chunk_specs, 1):
-                if cancel_token and getattr(cancel_token, "is_cancelled", False):
-                    raise RuntimeError("Operation cancelled by user.")
-
-                chunk_dur = rel_end - rel_st
-                percent = 15 + int((idx / total_chunks) * 70)
-                report(f"Transcribing chunk {idx}/{total_chunks} [{actual_st/60.0:.2f}m - {actual_end/60.0:.2f}m]...", percent)
-
-                # Extract chunk audio
-                chunk_audio = self.ffmpeg.extract_audio_segment(
+                extracted_audio = self.ffmpeg.extract_audio_segment(
                     video_path=video,
-                    start_seconds=actual_st,
-                    duration_seconds=chunk_dur,
+                    start_seconds=time_range.start_seconds,
+                    duration_seconds=time_range.duration_seconds,
                     output_format="mp3",
                     bitrate="64k",
                     sample_rate=16000,
                     channels=1,
                     cancel_token=cancel_token
                 )
+                self.db.update_job_status(job_id, JobStatus.TRANSCRIBING, extracted_audio_path=str(extracted_audio))
 
-                chunk_obj = AudioChunk(
-                    index=idx,
-                    file_path=str(chunk_audio),
-                    start_seconds=actual_st,
-                    end_seconds=actual_end,
-                    duration_seconds=chunk_dur,
-                    status="TRANSCRIBING"
-                )
-
-                # Throttle only if local model
-                if provider_id == "local_whisper":
-                    self.resource_ctrl.throttle_if_needed(is_local_cpu_intensive=True)
-
-                chunk_sub = provider.transcribe(
-                    audio_path=chunk_audio,
-                    start_offset_seconds=actual_st,
-                    duration_seconds=chunk_dur,
+                report(f"Transcribing audio with {model_info.display_name}...", 40)
+                
+                sub_file = provider.transcribe(
+                    audio_path=extracted_audio,
+                    start_offset_seconds=time_range.start_seconds,
+                    duration_seconds=segment_duration,
                     cancel_token=cancel_token
                 )
+                chunk_cues_collection.append(sub_file.cues)
+                report("Transcription completed.", 85)
+            else:
+                # Chunked processing using user-configured chunk duration for this provider
+                chunk_length = float(chunk_seconds)
+                chunk_specs = AudioChunker.calculate_chunks(
+                    total_duration_sec=segment_duration,
+                    start_offset_sec=time_range.start_seconds,
+                    chunk_length_sec=chunk_length,
+                    overlap_sec=2.0
+                )
 
-                chunk_obj.status = "COMPLETED"
-                chunk_obj.cues = chunk_sub.cues
-                self.db.save_chunk(job_id, chunk_obj)
-                chunk_cues_collection.append(chunk_sub.cues)
+                total_chunks = len(chunk_specs)
+                chunk_min_str = f"{chunk_length / 60.0:.1f}".rstrip("0").rstrip(".")
+                report(f"Splitting into {total_chunks} audio chunks (~{chunk_min_str} min each)...", 15)
+                self.db.update_job_status(job_id, JobStatus.TRANSCRIBING)
 
-                # Cleanup chunk temp audio file
-                try:
-                    if chunk_audio.exists():
-                        chunk_audio.unlink()
-                except Exception:
-                    pass
+                for idx, (actual_st, actual_end, rel_st, rel_end) in enumerate(chunk_specs, 1):
+                    if cancel_token and getattr(cancel_token, "is_cancelled", False):
+                        raise RuntimeError("Operation cancelled by user.")
 
-        # 5. Merge and reconcile overlapping chunks
-        report("Merging cues and reconciling timestamps...", 90)
-        final_cues = AudioChunker.reconcile_and_merge_cues(chunk_cues_collection)
-        final_sub = SubtitleFile(cues=final_cues, language="en")
+                    chunk_dur = rel_end - rel_st
+                    percent = 15 + int((idx / total_chunks) * 70)
+                    report(f"Transcribing chunk {idx}/{total_chunks} [{actual_st/60.0:.2f}m - {actual_end/60.0:.2f}m]...", percent)
 
-        # 6. Validate final SRT
-        issues = SRTParser.validate_cues(final_sub.cues, time_range_tuple)
-        if issues:
-            logger.warning(f"SRT validation notes: {'; '.join(issues)}")
+                    # Extract chunk audio
+                    chunk_audio = self.ffmpeg.extract_audio_segment(
+                        video_path=video,
+                        start_seconds=actual_st,
+                        duration_seconds=chunk_dur,
+                        output_format="mp3",
+                        bitrate="64k",
+                        sample_rate=16000,
+                        channels=1,
+                        cancel_token=cancel_token
+                    )
 
-        # 7. Write to disk
-        report(f"Writing final English SRT to {output_path.name}...", 95)
-        SRTParser.write_file(final_sub, output_path, overwrite=True)
+                    chunk_obj = AudioChunk(
+                        index=idx,
+                        file_path=str(chunk_audio),
+                        start_seconds=actual_st,
+                        end_seconds=actual_end,
+                        duration_seconds=chunk_dur,
+                        status="TRANSCRIBING"
+                    )
 
-        self.db.update_job_status(job_id, JobStatus.COMPLETED, output_srt_path=str(output_path))
-        report("English SRT generated successfully!", 100)
+                    chunk_sub = provider.transcribe(
+                        audio_path=chunk_audio,
+                        start_offset_seconds=actual_st,
+                        duration_seconds=chunk_dur,
+                        cancel_token=cancel_token
+                    )
 
-        # Cleanup extracted full audio
-        try:
-            if extracted_audio and extracted_audio.exists():
-                extracted_audio.unlink()
-        except Exception:
-            pass
+                    chunk_obj.status = "COMPLETED"
+                    chunk_obj.cues = chunk_sub.cues
+                    self.db.save_chunk(job_id, chunk_obj)
+                    chunk_cues_collection.append(chunk_sub.cues)
 
-        return output_path
+                    # Cleanup chunk temp audio file
+                    try:
+                        if chunk_audio.exists():
+                            chunk_audio.unlink()
+                    except Exception:
+                        pass
+
+            # 5. Merge and reconcile overlapping chunks
+            report("Merging cues and reconciling timestamps...", 90)
+            final_cues = AudioChunker.reconcile_and_merge_cues(chunk_cues_collection)
+            final_sub = SubtitleFile(cues=final_cues, language="en")
+
+            # 6. Validate final SRT
+            issues = SRTParser.validate_cues(final_sub.cues, time_range_tuple)
+            if issues:
+                logger.warning(f"SRT validation notes: {'; '.join(issues)}")
+
+            # 7. Write to disk (with fallback to user Documents if directory is write-protected)
+            report(f"Writing final English SRT to {output_path.name}...", 95)
+            try:
+                SRTParser.write_file(final_sub, output_path, overwrite=True)
+            except (PermissionError, OSError) as write_err:
+                fallback_dir = Path.home() / "Documents" / "Online Subtitle Generator"
+                fallback_dir.mkdir(parents=True, exist_ok=True)
+                output_path = fallback_dir / output_path.name
+                logger.warning(f"Output directory not writable ({write_err}); saved to fallback: {output_path}")
+                SRTParser.write_file(final_sub, output_path, overwrite=True)
+
+            self.db.update_job_status(job_id, JobStatus.COMPLETED, output_srt_path=str(output_path))
+            report("English SRT generated successfully!", 100)
+            return output_path
+
+        except Exception as e:
+            is_cancel = (cancel_token and getattr(cancel_token, "is_cancelled", False)) or ("cancel" in str(e).lower())
+            new_status = JobStatus.CANCELLED if is_cancel else JobStatus.FAILED
+            self.db.update_job_status(job_id, new_status, str(e))
+            raise
+
+        finally:
+            try:
+                if extracted_audio and Path(extracted_audio).exists():
+                    Path(extracted_audio).unlink()
+            except Exception:
+                pass

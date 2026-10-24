@@ -63,3 +63,26 @@ def test_subtitle_cue_shift_offset():
     assert shifted.start_str == "00:15:01,000"
     assert shifted.end_str == "00:15:04,000"
     assert shifted.text == "Test phrase"
+
+
+def test_time_range_non_multiple_of_60_and_clamping():
+    """Verify that videos with durations not divisible by 60 (e.g. 1452s = 24.2m) work seamlessly."""
+    video_dur = 1452.0  # 24.2 minutes
+    import math
+    ceil_min = int(math.ceil(video_dur / 60.0))  # 25 min
+
+    # User selects 0 to 25 min in UI
+    tr = TimeRange.from_minutes(0, ceil_min)
+    # validate should clamp gracefully instead of erroring out
+    valid, err = tr.validate(video_duration_seconds=video_dur)
+    assert valid is True
+    assert err == ""
+    assert tr.end_seconds == video_dur
+
+    # Clamp method test with 7261.5 seconds (121.025 minutes)
+    long_video_dur = 7261.5
+    tr2 = TimeRange(0.0, 7500.0)
+    clamped = tr2.clamp_to_duration(long_video_dur)
+    assert clamped.end_seconds == long_video_dur
+    valid, err = clamped.validate(long_video_dur)
+    assert valid is True

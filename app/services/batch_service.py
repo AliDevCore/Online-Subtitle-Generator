@@ -166,7 +166,7 @@ class BatchService:
                     total_duration = probe_res["duration_seconds"]
                     item.duration_seconds = total_duration
 
-                end_sec = (item.end_min * 60.0) if (item.end_min and item.end_min > 0) else total_duration
+                end_sec = min(item.end_min * 60.0, total_duration) if (item.end_min and item.end_min > 0) else total_duration
 
                 time_range = TimeRange(
                     start_seconds=item.start_min * 60.0,

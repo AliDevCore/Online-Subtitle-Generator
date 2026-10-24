@@ -1,84 +1,31 @@
-# Verified AI Providers & Model Registry
+# Verified Speech Recognition Provider Documentation
 
 *Verification Date: October 2026*
 
-This document provides verified technical documentation, endpoint definitions, pricing tiers, and capabilities for all speech-recognition (ASR) and machine translation providers supported by OnlineSub.
+Online Subtitle Generator utilizes **Cloudflare Workers AI** as its primary speech recognition engine for ultra-fast, cloud-hosted Whisper transcription.
 
 ---
 
-## 1. Google Gemini API
-
-### Official Documentation
-- **Audio Understanding**: [https://ai.google.dev/gemini-api/docs/audio](https://ai.google.dev/gemini-api/docs/audio)
-- **API Overview & Pricing**: [https://ai.google.dev/pricing](https://ai.google.dev/pricing)
-- **Base Endpoint**: `https://generativelanguage.googleapis.com/v1beta`
-
-### Verified Models
-
-#### `gemini-2.5-flash` (Recommended for ASR & Translation)
-- **Type**: Multimodal audio and text generation.
-- **ASR Capability**: Native audio understanding with millisecond timestamp extraction.
-- **Translation Capability**: Superior contextual Persian translation preserving subtitle structure.
-- **Free Tier**: 15 Requests Per Minute (RPM), 1,000,000 Tokens Per Minute (TPM), 1,500 Requests Per Day (RPD) on Google AI Studio.
-- **Paid Tier**: \$0.075 / 1M input tokens.
-- **Audio Limits**: Supports up to 1-2 hours of audio input per request (3600 seconds default chunking in OnlineSub).
-
-#### `gemini-1.5-flash`
-- **Type**: High-speed multimodal model.
-- **Pricing & Limits**: Same free-tier allowances on AI Studio.
-
----
-
-## 2. Cloudflare Workers AI
+## Cloudflare Workers AI (`@cf/openai/whisper`)
 
 ### Official Documentation
 - **Workers AI Models**: [https://developers.cloudflare.com/workers-ai/models/](https://developers.cloudflare.com/workers-ai/models/)
 - **Whisper Documentation**: [https://developers.cloudflare.com/workers-ai/models/whisper/](https://developers.cloudflare.com/workers-ai/models/whisper/)
-- **Base Endpoint**: `https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}`
+- **Base Endpoint**: `https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/@cf/openai/whisper`
 
-### Verified Models
-
-#### `@cf/openai/whisper` (ASR)
+### Model Capabilities
+- **Architecture**: OpenAI Whisper neural automatic speech recognition running on Cloudflare edge GPUs.
 - **Input**: Binary audio stream (`application/octet-stream`).
-- **Output**: JSON containing text and WebVTT cue timestamps.
-- **Free Tier**: 10,000 Neurons per day free across Workers AI.
-- **Paid Tier**: \$0.011 per 1,000 Neurons.
-- **Chunking Recommendation**: Max 10 minutes (600s) per request to satisfy payload boundaries.
+- **Output**: JSON payload with segmented timestamps and transcribed text cues.
+- **Audio Limits**: Maximum recommended chunk length is 5 minutes (300 seconds) for optimal latency and response reliability.
 
-#### `@cf/meta/m2m100-1.2b` (Translation)
-- **Input**: Text, source language (`english`), target language (`persian`).
-- **Free Tier**: Included in 10,000 daily Neurons.
+### Official Quotas & Limits
+- **Free Tier Allowance**: Cloudflare provides **10,000 Neurons per day free** across Workers AI models per account (equivalent to several hours of speech recognition audio per day).
+- **Paid Tier**: \$0.011 per 1,000 Neurons above the free daily allowance.
+- **Rate Limits**: Rate limits (HTTP 429) apply per token/account. The application handles rate limits automatically with exponential backoff and cool-down switching.
 
----
-
-## 3. Hugging Face Serverless Inference API
-
-### Official Documentation
-- **Audio-to-Text API**: [https://huggingface.co/docs/api-inference/detailed_parameters#audio-to-text](https://huggingface.co/docs/api-inference/detailed_parameters#audio-to-text)
-- **Base Endpoint**: `https://api-inference.huggingface.co/models/{model_id}`
-
-### Verified Models
-
-#### `openai/whisper-large-v3` (ASR)
-- **Input**: Binary audio payload.
-- **Parameters**: `return_timestamps=True`.
-- **Free Tier**: Serverless queue accessible with free Hugging Face User Access Token.
-- **Chunking Recommendation**: Max 5 minutes (300s) per request.
-
-#### `facebook/m2m100_1.2B` (Translation)
-- **Input**: `inputs`, `src_lang: "en"`, `tgt_lang: "fa"`.
-- **Free Tier**: Serverless queue.
-
----
-
-## 4. Local Faster-Whisper (Offline CPU)
-
-### Official Documentation
-- **Repository**: [https://github.com/SYSTRAN/faster-whisper](https://github.com/SYSTRAN/faster-whisper)
-- **Engine**: CTranslate2 optimized Whisper implementation with 8-bit quantization (`int8`).
-
-### Verified Models
-- `base`: ~1.0 GB RAM required. Fast, low resource utilization.
-- `small`: ~2.0 GB RAM required. Balanced accuracy and speed.
-- `medium`: ~5.0 GB RAM required. High quality.
-- **Pricing**: 100% Free & completely offline. No API key or internet access required.
+### Multi-Account High-Availability Pool
+To support long-running overnight batch processing across large video libraries:
+- Users can configure up to 10 Cloudflare accounts in the pool.
+- If an account encounters quota exhaustion (HTTP 429), it is placed into a temporary cool-down and transcription automatically fails over to the next configured account in the pool.
+- Account credentials are validated on usage. Invalid tokens (HTTP 401/403) are reported cleanly rather than causing infinite retry loops.
