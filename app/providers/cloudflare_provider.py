@@ -14,7 +14,7 @@ import requests
 from app.core.config import VERIFIED_ASR_PROVIDERS
 from app.core.credential_manager import CredentialManager
 from app.core.network_resilience import execute_with_resilience
-from app.core.subtitle_segmenter import segment_words_into_cues, resegment_cues
+from app.core.subtitle_segmenter import segment_words_into_cues, resegment_cues, is_hallucination_cue
 from app.core.types import SubtitleFile, SubtitleCue, ProviderInfo
 from app.providers.base import BaseASRProvider
 
@@ -67,7 +67,7 @@ def _parse_cloudflare_vtt(vtt_text: str) -> List[SubtitleCue]:
         end_ms = _parse_vtt_timestamp(parts[1]) if len(parts) > 1 else st_ms + 2000
 
         text = " ".join(lines[ts_idx + 1:])
-        if text.strip() and end_ms > st_ms:
+        if text.strip() and end_ms > st_ms and not is_hallucination_cue(text):
             cues.append(SubtitleCue(idx, st_ms, end_ms, text.strip()))
             idx += 1
     return cues
@@ -242,13 +242,18 @@ class CloudflareASRProvider(BaseASRProvider):
         # 3. Fallback to raw text if still empty
         if not cues:
             raw_text = result.get("text", "").strip()
-            if raw_text:
+            if raw_text and not is_hallucination_cue(raw_text):
                 cues.append(SubtitleCue(
                     index=1,
                     start_ms=0,
                     end_ms=int(duration_seconds * 1000),
                     text=raw_text
                 ))
+
+        # Filter out any hallucination cues and re-index monotonically
+        cues = [c for c in cues if not is_hallucination_cue(c.text)]
+        for i, c in enumerate(cues, 1):
+            c.index = i
 
         # Shift timestamps by start_offset_seconds
         offset_ms = int(start_offset_seconds * 1000)

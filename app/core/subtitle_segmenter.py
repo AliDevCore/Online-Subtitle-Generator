@@ -6,6 +6,7 @@ and professionally formatted subtitle cues adhering to standard broadcast/Netfli
 
 from __future__ import annotations
 import re
+from collections import Counter
 from typing import List, Dict, Any, Optional
 from app.core.types import SubtitleCue
 
@@ -43,6 +44,73 @@ DISCOURSE_STARTERS = {
     "no", "yes", "yeah", "okay", "well", "look", "listen", "wait",
     "what about", "what if", "that's right", "come on", "i mean", "i think"
 }
+
+# Canned phrases commonly hallucinated by ASR models (Whisper) on silent intro/outro or music
+CANNED_HALLUCINATIONS = {
+    "thanks for watching", "thank you for watching",
+    "please subscribe", "subscribe to our channel", "subscribe to my channel",
+    "subtitles by the amaraorg community", "subtitles by the amara org community",
+    "subtitles by amaraorg", "subtitles by", "translated by", "amaraorg",
+    "the end", "the end."
+}
+
+
+def is_hallucination_cue(text: str) -> bool:
+    """
+    Detect whether a subtitle cue is an autoregressive hallucination
+    produced by speech recognition models (like Whisper) during silence, noise, or music.
+
+    Catches:
+    1. Zero-letter outputs (e.g. '4', '-5 -5 -5 -5', '-4 -4 -4', '...', '--').
+    2. Repetitive token loops (e.g. identical token repeated >= 3 times).
+    3. Monotonous token dominance (e.g. same token accounts for >= 60% of cue words).
+    4. Repeated multi-word phrase loops (e.g. 'Thank you very much. Thank you very much.').
+    5. Canned YouTube/media outro watermarks during silent intro/outro.
+    """
+    t = text.strip()
+    if not t:
+        return True
+
+    # 1. Zero alphabetic characters: Real human speech must contain at least one natural letter
+    if not re.search(r"[a-zA-Z\u0600-\u06FF]", t):
+        return True
+
+    # 2. Token-level analysis for repetition loops
+    words = [w.strip(".,!?:;\"'").lower() for w in t.split() if w.strip(".,!?:;\"'")]
+    if len(words) >= 3:
+        # Check consecutive repetition (e.g. 'you you you', '-5 -5 -5')
+        max_consecutive = 1
+        cur_consecutive = 1
+        for i in range(1, len(words)):
+            if words[i] == words[i - 1]:
+                cur_consecutive += 1
+                max_consecutive = max(max_consecutive, cur_consecutive)
+            else:
+                cur_consecutive = 1
+        if max_consecutive >= 3:
+            return True
+
+        # Check dominant token
+        counts = Counter(words)
+        _, top_cnt = counts.most_common(1)[0]
+        if top_cnt / len(words) >= 0.6:
+            return True
+
+    # 3. Repeated multi-word phrase loops (e.g. 'Thank you very much. Thank you very much.')
+    sentences = [s.strip().lower() for s in re.split(r"[\.\?\!]+", t) if s.strip()]
+    if len(sentences) >= 2:
+        s_counts = Counter(sentences)
+        _, top_s_cnt = s_counts.most_common(1)[0]
+        if top_s_cnt >= 2 and len(sentences) == top_s_cnt:
+            return True
+
+    # 4. Known canned video watermarks on silence
+    clean_lower = re.sub(r"[^a-z0-9\s]", "", t.lower()).strip()
+    for wm in CANNED_HALLUCINATIONS:
+        if wm in clean_lower:
+            return True
+
+    return False
 
 
 def _is_terminal(word: str) -> bool:
@@ -138,7 +206,12 @@ def segment_words_into_cues(
 
         words_text = [t["word"] for t in tokens_to_flush]
         raw_text = " ".join(words_text).strip()
+        if is_hallucination_cue(raw_text):
+            return
+
         formatted_text = _format_dialogue_if_applicable(tokens_to_flush, raw_text)
+        if is_hallucination_cue(formatted_text):
+            return
 
         cues.append(SubtitleCue(
             index=len(cues) + 1,
@@ -247,9 +320,12 @@ def segment_words_into_cues(
     if current_tokens:
         flush_tokens(current_tokens)
 
-    # Post-processing: Collision & Overlap Resolver
-    cues = _resolve_cue_collisions(cues, min_cue_duration_ms)
-    return cues
+    # Post-processing: Hallucination filter and Collision & Overlap Resolver
+    valid_cues = [c for c in cues if not is_hallucination_cue(c.text)]
+    resolved_cues = _resolve_cue_collisions(valid_cues, min_cue_duration_ms)
+    for idx, c in enumerate(resolved_cues, 1):
+        c.index = idx
+    return resolved_cues
 
 
 def _resolve_cue_collisions(cues: List[SubtitleCue], min_duration_ms: int = 800) -> List[SubtitleCue]:
@@ -340,8 +416,13 @@ def resegment_cues(
     if not raw_cues:
         return []
 
+    # Filter out hallucination cues before decomposing into words
+    clean_raw = [c for c in raw_cues if not is_hallucination_cue(c.text)]
+    if not clean_raw:
+        return []
+
     words: List[Dict[str, Any]] = []
-    for cue in raw_cues:
+    for cue in clean_raw:
         cue_words = cue.text.split()
         if not cue_words:
             continue

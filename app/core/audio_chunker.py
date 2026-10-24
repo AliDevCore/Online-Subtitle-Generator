@@ -60,8 +60,11 @@ class AudioChunker:
         Reconciles duplicate sentences or partial phrases appearing within the overlap window.
         """
         all_cues: List[SubtitleCue] = []
+        from app.core.subtitle_segmenter import is_hallucination_cue
         for cues in chunk_cues_list:
-            all_cues.extend(cues)
+            for c in cues:
+                if not is_hallucination_cue(c.text):
+                    all_cues.append(c)
 
         if not all_cues:
             return []
@@ -109,8 +112,9 @@ class AudioChunker:
             if cue.end_ms > cue.start_ms:
                 merged.append(cue)
 
-        # Re-index all cues monotonically
-        for idx, cue in enumerate(merged, 1):
+        # Filter out any hallucinated cues and re-index all cues monotonically
+        clean_merged = [c for c in merged if not is_hallucination_cue(c.text)]
+        for idx, cue in enumerate(clean_merged, 1):
             cue.index = idx
 
-        return merged
+        return clean_merged

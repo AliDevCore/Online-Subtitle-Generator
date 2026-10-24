@@ -6,6 +6,7 @@ pause detection, and dialogue formatting.
 from app.core.subtitle_segmenter import (
     segment_words_into_cues,
     resegment_cues,
+    is_hallucination_cue,
     _format_dialogue_if_applicable,
 )
 from app.core.types import SubtitleCue
@@ -177,4 +178,69 @@ def test_clustered_timestamps_no_overlap():
     assert cues[1].text == "What are you doing?"
     # Must NOT overlap!
     assert cues[1].start_ms >= cues[0].end_ms
+
+
+def test_is_hallucination_cue_filters_zero_letter_and_loops():
+    """Verify that is_hallucination_cue catches Whisper artifacts on silence/intro."""
+    # Zero letters / digits / symbols
+    assert is_hallucination_cue("4") is True
+    assert is_hallucination_cue("-5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5") is True
+    assert is_hallucination_cue("-4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -") is True
+    assert is_hallucination_cue("...") is True
+    assert is_hallucination_cue("--") is True
+
+    # Repetition loops
+    assert is_hallucination_cue("you you you you") is True
+    assert is_hallucination_cue("Thank you very much. Thank you very much. Thank you very much.") is True
+
+    # Canned video watermarks
+    assert is_hallucination_cue("Thanks for watching!") is True
+    assert is_hallucination_cue("Please subscribe to my channel.") is True
+    assert is_hallucination_cue("Subtitles by the Amara.org community") is True
+
+    # Legitimate dialogue MUST NOT be filtered
+    assert is_hallucination_cue("Hey, were you out there?") is False
+    assert is_hallucination_cue("Yeah, I was.") is False
+    assert is_hallucination_cue("Checking on my flowers.") is False
+    assert is_hallucination_cue("Thank you.") is False
+    assert is_hallucination_cue("Yes.") is False
+    assert is_hallucination_cue("Room 404") is False
+    assert is_hallucination_cue("Call 911 immediately!") is False
+
+
+def test_resegment_cues_eliminates_user_reported_silence_hallucinations():
+    """Simulate user's exact issue where cues 1-17 are noise numbers and cues 18-20 are dialogue."""
+    raw_cues = [
+        SubtitleCue(1, 0, 800, "4"),
+        SubtitleCue(2, 5620, 6420, "-5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5"),
+        SubtitleCue(3, 6460, 7260, "-5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5"),
+        SubtitleCue(4, 9220, 11620, "-5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5"),
+        SubtitleCue(5, 13800, 14600, "-5 -5 -5 -5 -5 -5 -5"),
+        SubtitleCue(6, 17340, 21660, "-5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5"),
+        SubtitleCue(7, 21660, 22460, "-5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5"),
+        SubtitleCue(8, 22500, 23300, "-5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5 -5"),
+        SubtitleCue(9, 40960, 42600, "-4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4"),
+        SubtitleCue(10, 42640, 45200, "-4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4"),
+        SubtitleCue(11, 45200, 46280, "-4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4"),
+        SubtitleCue(12, 60580, 62220, "-4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4"),
+        SubtitleCue(13, 62260, 63900, "-4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4"),
+        SubtitleCue(14, 63940, 65580, "-4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4"),
+        SubtitleCue(15, 65620, 67260, "-4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4"),
+        SubtitleCue(16, 67300, 68940, "-4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4"),
+        SubtitleCue(17, 68980, 69780, "-4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -4 -"),
+        SubtitleCue(18, 87120, 88700, "Hey, were you out there?"),
+        SubtitleCue(19, 89000, 89980, "Yeah, I was."),
+        SubtitleCue(20, 90900, 92800, "Checking on my flowers.")
+    ]
+
+    filtered_cues = resegment_cues(raw_cues)
+    # Exactly the 3 dialogue cues should remain!
+    assert len(filtered_cues) == 3
+    assert filtered_cues[0].text == "Hey, were you out there?"
+    assert filtered_cues[1].text == "Yeah, I was."
+    assert filtered_cues[2].text == "Checking on my flowers."
+    # Re-indexed starting from 1
+    assert filtered_cues[0].index == 1
+    assert filtered_cues[1].index == 2
+    assert filtered_cues[2].index == 3
 
