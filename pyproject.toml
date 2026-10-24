@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "onlinesub"
+version = "1.0.0"
+authors = [{ name = "Ali" }]
+description = "AI Subtitle Generator & Persian Translator Windows Desktop Application"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: Microsoft :: Windows",
+    "Environment :: Win32 (MS Windows)",
+    "Topic :: Multimedia :: Video",
+]
+dependencies = [
+    "PySide6>=6.8.0",
+    "psutil>=6.0.0",
+    "keyring>=24.0.0",
+    "requests>=2.31.0",
+    "faster-whisper>=1.0.0",
+    "Pillow>=10.0.0",
+]
+
+[project.scripts]
+onlinesub = "app.main:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

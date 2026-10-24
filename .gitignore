@@ -1,0 +1,36 @@
+# Binaries
+bin/
+*.exe
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.spec.bak
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local data & logs
+temp/
+logs/
+*.db
+*.db-journal
+settings.json
+portable.txt
+data/
+
+# IDE & OS
+.vscode/
+.idea/
+*.swp
+Thumbs.db
