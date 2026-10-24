@@ -30,7 +30,20 @@ jobs:
           pip install -r requirements-dev.txt
 
       - name: Install FFmpeg
-        run: choco install ffmpeg -y
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
+            choco install ffmpeg -y
+          }
+          $chocoBin = "C:\ProgramData\chocolatey\bin"
+          if (Test-Path $chocoBin) {
+            echo "$chocoBin" >> $env:GITHUB_PATH
+          }
+          $chocoLibBin = "C:\ProgramData\chocolatey\lib\ffmpeg\tools\ffmpeg\bin"
+          if (Test-Path $chocoLibBin) {
+            echo "$chocoLibBin" >> $env:GITHUB_PATH
+          }
+          ffmpeg -version
 
       - name: Run automated tests
         run: |
@@ -43,7 +56,7 @@ jobs:
       - name: Create Portable Zip Package
         shell: pwsh
         run: |
-          Compress-Archive -Path "dist/Online Subtitle Generator/*" -DestinationPath "Online-Subtitle-Generator-Portable.zip"
+          Compress-Archive -Path "dist/Online Subtitle Generator/*" -DestinationPath "Online-Subtitle-Generator-Portable.zip" -Force
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -51,12 +64,30 @@ jobs:
           name: Online-Subtitle-Generator-Windows-Portable
           path: Online-Subtitle-Generator-Portable.zip
 
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+      - name: Generate Release Version & Tag
+        id: versioning
+        shell: pwsh
+        run: |
+          if ("${{ github.ref }}".StartsWith("refs/tags/v")) {
+            $tag = "${{ github.ref_name }}"
+            $title = "Online Subtitle Generator $tag"
+          } else {
+            $tag = "v1.0.${{ github.run_number }}"
+            $title = "Online Subtitle Generator v1.0.${{ github.run_number }}"
+          }
+          Write-Host "Target Tag: $tag"
+          Write-Host "Release Title: $title"
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "title=$title" >> $env:GITHUB_OUTPUT
+
+      - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.0' }}
+          tag_name: ${{ steps.versioning.outputs.tag }}
+          name: ${{ steps.versioning.outputs.title }}
           files: Online-Subtitle-Generator-Portable.zip
           generate_release_notes: true
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
