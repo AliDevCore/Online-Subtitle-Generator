@@ -31,8 +31,10 @@ Equipped with a **Multi-Account Failover Pool** (supporting up to 10 Cloudflare 
 
 ## Installation & Setup
 
-1. **Pre-built Portable Executable:**
-   - Run `Online Subtitle Generator.exe` directly from `C:\Ali\Utility\Online Subtitle Generator\`.
+1. **Pre-built Portable Executable (Recommended):**
+   - Download the latest portable release archive (`Online-Subtitle-Generator-v*.zip`) from the [Releases](https://github.com/your-username/Online-Subtitle-Generator/releases) page.
+   - Extract the `.zip` archive to any directory of your choice.
+   - Run `Online Subtitle Generator.exe`.
 2. **API Credentials:**
    - Click **🔑 Cloudflare Accounts (Pool)** on the top bar.
    - Enter your Cloudflare **Account ID** and **API Token** for Slot #1, #2, etc.
@@ -44,7 +46,7 @@ Equipped with a **Multi-Account Failover Pool** (supporting up to 10 Cloudflare 
 
 ```bash
 # Clone the repository
-git clone https://github.com/YourUsername/Online-Subtitle-Generator.git
+git clone https://github.com/your-username/Online-Subtitle-Generator.git
 cd "Online Subtitle Generator"
 
 # Install dependencies
@@ -64,4 +66,4 @@ python packaging/build_windows.py
 
 ## License
 
-MIT License. Designed and developed by Ali.
+MIT License. See [LICENSE](LICENSE) for details.

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "onlinesub"
 version = "1.0.0"
-authors = [{ name = "Ali" }]
+authors = [{ name = "OnlineSub" }]
 description = "AI Subtitle Generator & Persian Translator Windows Desktop Application"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -13,7 +13,7 @@ from app.core.types import ProviderInfo, PerformanceSettings, ChunkingSettings
 
 APP_NAME = "Online Subtitle Generator"
 APP_VERSION = "1.0.0"
-APP_AUTHOR = "Ali"
+APP_AUTHOR = "OnlineSub"
 
 # Determine base paths and portable mode
 IS_FROZEN = getattr(sys, "frozen", False)

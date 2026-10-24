@@ -16,7 +16,12 @@ if str(ROOT_DIR) not in sys.path:
 DIST_DIR = ROOT_DIR / "dist"
 BUILD_DIR = ROOT_DIR / "build"
 SPEC_FILE = ROOT_DIR / "packaging" / "OnlineSubtitleGenerator.spec"
-UTILITY_DEST = Path(r"C:\Ali\Utility\Online Subtitle Generator")
+_deploy_override = os.environ.get("DEPLOY_DIR")
+if _deploy_override:
+    UTILITY_DEST = Path(_deploy_override)
+else:
+    _user_utility = Path(os.environ.get("SystemDrive", "C:")) / (os.environ.get("USERNAME", "") or Path.home().name) / "Utility" / "Online Subtitle Generator"
+    UTILITY_DEST = _user_utility if _user_utility.parent.exists() else (Path.home() / "Utility" / "Online Subtitle Generator")
 
 
 def build():
@@ -76,7 +81,7 @@ def build():
         if src.exists():
             shutil.copy2(src, built_app_dir / doc)
 
-    # 4. Deploy to C:\Ali\Utility\Online Subtitle Generator (if running locally)
+    # 4. Deploy to local utility folder if configured / present
     try:
         print(f"\nDeploying to User Utility directory: {UTILITY_DEST}...")
         UTILITY_DEST.mkdir(parents=True, exist_ok=True)
