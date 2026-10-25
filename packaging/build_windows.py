@@ -20,8 +20,12 @@ _deploy_override = os.environ.get("DEPLOY_DIR")
 if _deploy_override:
     UTILITY_DEST = Path(_deploy_override)
 else:
-    _user_utility = Path(os.environ.get("SystemDrive", "C:")) / (os.environ.get("USERNAME", "") or Path.home().name) / "Utility" / "Online Subtitle Generator"
-    UTILITY_DEST = _user_utility if _user_utility.parent.exists() else (Path.home() / "Utility" / "Online Subtitle Generator")
+    # Explicit user path: C:\Ali\Utility\Online Subtitle Generator
+    _canonical_utility = Path(r"C:\Ali\Utility\Online Subtitle Generator")
+    if _canonical_utility.parent.exists():
+        UTILITY_DEST = _canonical_utility
+    else:
+        UTILITY_DEST = Path.home() / "Utility" / "Online Subtitle Generator"
 
 
 def build():

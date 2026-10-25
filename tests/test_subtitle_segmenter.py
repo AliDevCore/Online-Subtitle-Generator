@@ -271,3 +271,33 @@ def test_resegment_preserves_short_dialogue_lines():
     assert all(len(c.text.split()) <= 10 for c in fixed)
 
 
+def test_resegment_single_word_fragments_assembled():
+    """Verify that Cloudflare 1-word fragmented VTT cues are assembled into complete readable sentences."""
+    raw = [
+        SubtitleCue(1, 8400, 9200, "It's"),
+        SubtitleCue(2, 9240, 10040, "a number"),
+        SubtitleCue(3, 10080, 16980, "of"),
+        SubtitleCue(4, 16980, 17780, "people"),
+        SubtitleCue(5, 17820, 18620, "who"),
+        SubtitleCue(6, 18660, 19460, "have"),
+        SubtitleCue(7, 19500, 20300, "enjoyed"),
+        SubtitleCue(8, 20340, 21140, "the work."),
+        SubtitleCue(9, 24920, 25720, "Lisa?"),
+        SubtitleCue(10, 25760, 26560, "Oh."),
+        SubtitleCue(11, 26600, 27400, "Hi."),
+        SubtitleCue(12, 27440, 28240, "Hey."),
+        SubtitleCue(13, 28280, 29080, "I"),
+        SubtitleCue(14, 29120, 29920, "didn't"),
+        SubtitleCue(15, 29960, 30760, "hear"),
+        SubtitleCue(16, 30800, 31600, "you."),
+    ]
+    fixed = resegment_cues(raw)
+    # The 16 individual word cues should be unified into ~4-5 natural sentences
+    assert len(fixed) <= 6
+    # No single-word prepositions or conjunctions
+    assert not any(c.text.strip().lower() in ("of", "who", "have", "it's") for c in fixed)
+    # Complete sentences are present
+    assert any("people who have enjoyed the work." in c.text.lower() or "it's a number of people" in c.text.lower() for c in fixed)
+    assert any("i didn't hear you." in c.text.lower() for c in fixed)
+
+

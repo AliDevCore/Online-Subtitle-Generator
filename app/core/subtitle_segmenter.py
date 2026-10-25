@@ -42,7 +42,14 @@ UNSPLITTABLE_END_WORDS = {
 # Discourse / conversational sentence starters for unpunctuated speech
 DISCOURSE_STARTERS = {
     "no", "yes", "yeah", "okay", "well", "look", "listen", "wait",
-    "what about", "what if", "that's right", "come on", "i mean", "i think"
+    "what about", "what if", "that's right", "come on", "i mean", "i think",
+    "you're right", "i know", "you know", "it's hard", "it's not"
+}
+
+# Complete short dialogue phrases that should never be fused into the next speaker's turn
+COMPLETE_SHORT_PHRASES = {
+    "i'm sorry", "thank you", "excuse me", "you're right", "i know", "you know",
+    "it's hard", "never mind", "good morning", "good night", "hello"
 }
 
 # Canned phrases commonly hallucinated by ASR models (Whisper) on silent intro/outro or music
@@ -193,12 +200,14 @@ def segment_words_into_cues(
     Features:
     1. Splits on terminal punctuation (., ?, !).
     2. Splits on speech pauses / silence between words (>= pause_threshold_sec).
-    3. Grammar-aware soft splitting: never chops after unsplittable words (articles, prepositions, pronouns).
-    4. Orphan prevention: keeps short remaining words (1-3 words) with the sentence rather than creating
+    3. Splits on conversational dialogue boundaries (e.g. 'I'm sorry' -> 'you're right').
+    4. Grammar-aware soft splitting: never chops after unsplittable words (articles, prepositions, pronouns).
+    5. Orphan prevention: keeps short remaining words (1-3 words) with the sentence rather than creating
        lonely orphan cues like 'Yet.' or 'Marriage?'.
-    5. Normalizes intro silence durations so first words aren't isolated into standalone cues.
-    6. Formats two-person dialogue turns with hyphens (- Speaker 1 / - Speaker 2).
-    7. Resolves colliding timestamps so consecutive cues never overlap or flash simultaneously.
+    6. Minimum length safeguard: never outputs 1-2 word fragments without terminal punctuation.
+    7. Normalizes intro silence durations so first words aren't isolated into standalone cues.
+    8. Formats two-person dialogue turns with hyphens (- Speaker 1 / - Speaker 2).
+    9. Resolves colliding timestamps so consecutive cues never overlap or flash simultaneously.
     """
     if not words:
         return []
@@ -285,8 +294,12 @@ def segment_words_into_cues(
 
         # Case 1: Terminal punctuation reached (., ?, !)
         if is_term:
-            # Standalone answers like "Yes.", "No.", "Why?" are valid and should flush
-            # But avoid flushing if it's literally word 0 and next word follows with 0 pause
+            # If it's a short 1-2 word greeting/response (e.g. "Oh.", "Hi.") and next word follows immediately (< 0.25s),
+            # keep them together to avoid micro-flashing
+            if num_words <= 2 and pause < 0.25 and raw_word_lower in {"oh", "hi", "hey", "yes", "no"}:
+                i += 1
+                continue
+
             next_is_capitalized = bool(next_token["word"]) and next_token["word"][0].isupper()
             if num_words >= 2 or pause >= 0.15 or next_is_capitalized or not has_next:
                 flush_tokens(current_tokens)
@@ -294,22 +307,55 @@ def segment_words_into_cues(
                 i += 1
                 continue
 
-        # Case 2: Significant speech pause between words (Speaker change or breath pause)
-        if pause >= pause_threshold_sec:
-            # Avoid cutting after unsplittable word if pause is only moderately long (< 0.65s)
-            if raw_word_lower not in UNSPLITTABLE_END_WORDS or pause >= 0.65:
+        # Case 2: Complete short dialogue phrase reached (e.g. "I'm sorry" right before "you're right")
+        current_phrase = " ".join(t["word"].strip(".,!?:;\"'").lower() for t in current_tokens)
+        next_clean = next_token["word"].strip(".,!?:;\"'").lower()
+        two_ahead = f"{next_clean} {valid_words[i+2]['word'].strip('.,!?:;\"\'').lower()}" if i + 2 < len(valid_words) else ""
+
+        if current_phrase in COMPLETE_SHORT_PHRASES:
+            if next_clean in DISCOURSE_STARTERS or two_ahead in DISCOURSE_STARTERS or next_clean in {"and", "but", "so", "because", "yet"} or pause >= 0.04:
                 flush_tokens(current_tokens)
                 current_tokens = []
                 i += 1
                 continue
 
-        # Case 3: Reached soft limits (max_words_per_cue or max_duration_sec)
+        # Case 3: Significant speech pause between words (Speaker change or breath pause)
+        if pause >= pause_threshold_sec:
+            # Avoid cutting after unsplittable word if pause is only moderately long (< 0.65s)
+            if raw_word_lower not in UNSPLITTABLE_END_WORDS or pause >= 0.65:
+                if num_words >= 2:
+                    flush_tokens(current_tokens)
+                    current_tokens = []
+                    i += 1
+                    continue
+
+        # Safeguard: Never flush fragmented cues with fewer than 3 words unless terminal punctuation
+        if num_words < 3:
+            i += 1
+            continue
+
+        # Case 4: Fast speech discourse marker / dialogue turn (e.g. "you're right", "I know", "well", "no")
+        if num_words >= 4 and (next_clean in DISCOURSE_STARTERS or two_ahead in DISCOURSE_STARTERS):
+            if raw_word_lower not in UNSPLITTABLE_END_WORDS:
+                flush_tokens(current_tokens)
+                current_tokens = []
+                i += 1
+                continue
+
+        # Case 5: Clause break (, or ;) with sufficient words
+        if is_clause and num_words >= 4 and cue_dur >= 1.5:
+            if raw_word_lower not in UNSPLITTABLE_END_WORDS:
+                flush_tokens(current_tokens)
+                current_tokens = []
+                i += 1
+                continue
+
+        # Case 6: Reached soft limits (max_words_per_cue or max_duration_sec)
         # Apply grammar-aware soft splitting & orphan prevention
         if num_words >= max_words_per_cue or cue_dur >= max_duration_sec:
             remaining_to_term = words_until_terminal(i + 1)
 
             # Orphan prevention: If sentence will finish in 1 to 3 words, DO NOT cut now!
-            # Let the cue absorb those 1-3 words and finish cleanly together.
             if remaining_to_term <= 3 and num_words <= (max_words_per_cue + 3) and cue_dur < (max_duration_sec + 2.0):
                 i += 1
                 continue
@@ -324,25 +370,6 @@ def segment_words_into_cues(
             current_tokens = []
             i += 1
             continue
-
-        # Case 4: Clause break (, or ;) with sufficient words
-        if is_clause and num_words >= 6 and cue_dur >= 2.5:
-            if raw_word_lower not in UNSPLITTABLE_END_WORDS:
-                flush_tokens(current_tokens)
-                current_tokens = []
-                i += 1
-                continue
-
-        # Case 5: Fast speech discourse marker (e.g. "What about", "That's right", "No")
-        # If running on for 6+ words without punctuation and encountering a conversational boundary
-        if num_words >= 6:
-            next_word_lower = next_token["word"].strip(".,!?:;\"'").lower()
-            if next_word_lower in DISCOURSE_STARTERS and pause >= 0.10:
-                if raw_word_lower not in UNSPLITTABLE_END_WORDS:
-                    flush_tokens(current_tokens)
-                    current_tokens = []
-                    i += 1
-                    continue
 
         i += 1
 
@@ -440,14 +467,9 @@ def resegment_cues(
     min_cue_duration_ms: int = 800
 ) -> List[SubtitleCue]:
     """
-    Refine existing SubtitleCues from ASR WebVTT or segment streams:
-    1. Filters out silence / hallucination artifacts.
-    2. Splits internal completed sentences into separate readable cues.
-    3. Fixes broken trailing conjunctions/prepositions (e.g. 'Amen. But' -> 'Amen.' and 'But ...').
-    4. Merges ONLY genuine broken fragments (ending in prepositions/articles like 'to', 'the')
-       while strictly preserving natural short dialogue lines.
-    5. Formats two-speaker dialogue turns with hyphens (- Speaker 1 / - Speaker 2).
-    6. Ensures monotonic non-colliding timestamps.
+    Take existing SubtitleCues (e.g. from Cloudflare WebVTT or segment streams),
+    decompose into word-level tokens preserving inter-cue timestamps and speech pauses,
+    and re-segment them into natural, sentence-aligned, readable subtitle cues.
     """
     if not raw_cues:
         return []
@@ -456,67 +478,24 @@ def resegment_cues(
     if not clean_raw:
         return []
 
-    # Step 1: Split any cue that contains an internal terminal sentence boundary (. ? !)
-    split_cues: List[SubtitleCue] = []
-    for c in clean_raw:
-        txt = c.text.strip()
-        sentences = [s.strip() for s in re.split(r"(?<=[.?!])\s+", txt) if s.strip()]
-        if len(sentences) > 1 and len(txt.split()) >= 4:
-            tot_words = len(txt.split())
-            dur = c.end_ms - c.start_ms
-            cur_st = c.start_ms
-            for s in sentences:
-                s_words = len(s.split())
-                s_dur = int(dur * (s_words / tot_words)) if tot_words else 1000
-                s_end = min(c.end_ms, cur_st + s_dur)
-                split_cues.append(SubtitleCue(len(split_cues) + 1, cur_st, s_end, _clean_cue_text(s)))
-                cur_st = s_end
-        else:
-            split_cues.append(SubtitleCue(len(split_cues) + 1, c.start_ms, c.end_ms, _clean_cue_text(txt)))
-
-    # Step 2: Fix trailing conjunctions (e.g. "Amen. But" -> "Amen." and "But ...")
-    for i in range(len(split_cues) - 1):
-        cur = split_cues[i]
-        nxt = split_cues[i + 1]
-        words = cur.text.split()
-        if len(words) >= 2:
-            last_word = words[-1].lower().strip(".,!?:;\"'")
-            prev_word = words[-2]
-            if last_word in ("but", "and", "or", "so", "because", "yet") and any(prev_word.endswith(p) for p in (".", "?", "!")):
-                cur.text = " ".join(words[:-1]).strip()
-                nxt.text = _clean_cue_text(f"{words[-1]} {nxt.text}")
-
-    # Step 3: Merge only genuine broken fragments (ending in prepositions/articles/conjunctions)
-    INCOMPLETE_CONNECTORS = {"the", "a", "an", "to", "of", "in", "for", "on", "with", "at", "by", "that", "and", "but", "or"}
-    merged: List[SubtitleCue] = []
-    for c in split_cues:
-        if not merged:
-            merged.append(c)
+    words: List[Dict[str, Any]] = []
+    for cue in clean_raw:
+        cue_words = cue.text.split()
+        if not cue_words:
             continue
-        prev = merged[-1]
-        p_words = prev.text.split()
-        c_words = c.text.split()
-        combined_words = len(p_words) + len(c_words)
-        combined_dur_sec = (c.end_ms - prev.start_ms) / 1000.0
-        last_word_clean = p_words[-1].lower().strip(".,!?:;\"'") if p_words else ""
+        c_dur_s = max((cue.end_ms - cue.start_ms) / 1000.0, 0.2)
+        w_dur_s = c_dur_s / len(cue_words)
+        st_s = cue.start_ms / 1000.0
 
-        if last_word_clean in INCOMPLETE_CONNECTORS and combined_words <= max_words_per_cue and combined_dur_sec <= max_duration_sec:
-            c_text_clean = c.text[0].lower() + c.text[1:] if len(c.text) > 1 else c.text.lower()
-            prev.text = f"{prev.text} {c_text_clean}"
-            prev.end_ms = c.end_ms
-        else:
-            merged.append(c)
+        for i, w in enumerate(cue_words):
+            w_start = st_s + (i * w_dur_s)
+            w_end = st_s + ((i + 1) * w_dur_s)
+            words.append({"word": w, "start": w_start, "end": w_end})
 
-    # Step 4: Format internal two-person dialogues with hyphens if present
-    for c in merged:
-        t = c.text.strip()
-        m = re.search(r"([.?!])\s+([A-Z]|well|no|yes|yeah|sure|okay|i know)", t, re.IGNORECASE)
-        if m and "\n" not in t and not t.startswith("-"):
-            idx = m.start(1) + 1
-            p1 = t[:idx].strip()
-            p2 = t[idx:].strip()
-            if len(p1.split()) >= 1 and len(p2.split()) >= 1:
-                p2 = p2[0].upper() + p2[1:] if p2 else p2
-                c.text = f"- {p1}\n- {p2}"
-
-    return _resolve_cue_collisions(merged, min_duration_ms=min_cue_duration_ms)
+    return segment_words_into_cues(
+        words=words,
+        pause_threshold_sec=pause_threshold_sec,
+        max_words_per_cue=max_words_per_cue,
+        max_duration_sec=max_duration_sec,
+        min_cue_duration_ms=min_cue_duration_ms
+    )
