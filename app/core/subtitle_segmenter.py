@@ -310,7 +310,10 @@ def segment_words_into_cues(
         # Case 2: Complete short dialogue phrase reached (e.g. "I'm sorry" right before "you're right")
         current_phrase = " ".join(t["word"].strip(".,!?:;\"'").lower() for t in current_tokens)
         next_clean = next_token["word"].strip(".,!?:;\"'").lower()
-        two_ahead = f"{next_clean} {valid_words[i+2]['word'].strip('.,!?:;\"\'').lower()}" if i + 2 < len(valid_words) else ""
+        two_ahead = ""
+        if i + 2 < len(valid_words):
+            word_ahead_clean = valid_words[i + 2]["word"].strip(".,!?:;\"'").lower()
+            two_ahead = f"{next_clean} {word_ahead_clean}"
 
         if current_phrase in COMPLETE_SHORT_PHRASES:
             if next_clean in DISCOURSE_STARTERS or two_ahead in DISCOURSE_STARTERS or next_clean in {"and", "but", "so", "because", "yet"} or pause >= 0.04:
