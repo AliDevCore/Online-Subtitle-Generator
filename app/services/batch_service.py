@@ -138,7 +138,7 @@ class BatchService:
     def run_video_batch(
         self,
         asr_provider: str = "cloudflare",
-        asr_model: str = "@cf/openai/whisper",
+        asr_model: str = "@cf/openai/whisper-large-v3-turbo",
         item_callback: Optional[Callable[[BatchVideoItem, int, int], None]] = None,
         cancel_token: Optional[Any] = None,
         **kwargs: Any

@@ -82,7 +82,7 @@ def _parse_cloudflare_vtt(vtt_text: str) -> List[SubtitleCue]:
 class CloudflareASRProvider(BaseASRProvider):
     """ASR using Cloudflare Workers AI Whisper with multi-account pool."""
 
-    def __init__(self, model_id: str = "@cf/openai/whisper", api_key: Optional[str] = None, **kwargs: Any):
+    def __init__(self, model_id: str = "@cf/openai/whisper-large-v3-turbo", api_key: Optional[str] = None, **kwargs: Any):
         super().__init__(model_id, api_key, **kwargs)
         self.account_id = kwargs.get("account_id") or CredentialManager.get_credential("cloudflare", "account_id")
 
@@ -94,15 +94,15 @@ class CloudflareASRProvider(BaseASRProvider):
             provider_id="cloudflare",
             display_name="Cloudflare Workers AI",
             model_id=self.model_id,
-            model_display_name="OpenAI Whisper (@cf/openai/whisper)",
+            model_display_name="OpenAI Whisper Large v3 Turbo (@cf/openai/whisper-large-v3-turbo)",
             pipeline="ASR",
             is_free=True,
-            pricing_desc="10,000 Neurons/day free; $0.011 / 1k Neurons paid",
-            free_tier_desc="10k free daily Neurons on Cloudflare",
+            pricing_desc="10,000 Neurons/day free; $0.0005 per audio minute (46.6 Neurons/min)",
+            free_tier_desc="10k free daily Neurons on Cloudflare (~214 minutes daily per account)",
             supports_timestamps=True,
-            max_duration_sec=600,
+            max_duration_sec=300,
             requires_key=True,
-            doc_url="https://developers.cloudflare.com/workers-ai/models/whisper/",
+            doc_url="https://developers.cloudflare.com/workers-ai/models/whisper-large-v3-turbo/",
         )
 
     def validate_credentials(self) -> Tuple[bool, str]:
@@ -166,15 +166,30 @@ class CloudflareASRProvider(BaseASRProvider):
                 token = acct["api_key"]
 
                 url = f"{CLOUDFLARE_API_BASE}/{acct_id}/ai/run/{self.model_id}"
-                headers = {
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/octet-stream"
-                }
+                is_turbo = "whisper-large-v3-turbo" in self.model_id.lower()
 
-                logger.info(f"Sending audio ({len(audio_bytes) / 1024:.1f} KB) to Cloudflare (Account #{idx})...")
+                logger.info(f"Sending audio ({len(audio_bytes) / 1024:.1f} KB) to Cloudflare (Account #{idx}) [{self.model_id}]...")
 
                 try:
-                    resp = requests.post(url, headers=headers, data=audio_bytes, timeout=120)
+                    if is_turbo:
+                        import base64
+                        b64_audio = base64.b64encode(audio_bytes).decode("ascii")
+                        payload = {
+                            "audio": b64_audio,
+                            "vad_filter": True,
+                            "condition_on_previous_text": False
+                        }
+                        headers = {
+                            "Authorization": f"Bearer {token}",
+                            "Content-Type": "application/json"
+                        }
+                        resp = requests.post(url, headers=headers, json=payload, timeout=120)
+                    else:
+                        headers = {
+                            "Authorization": f"Bearer {token}",
+                            "Content-Type": "application/octet-stream"
+                        }
+                        resp = requests.post(url, headers=headers, data=audio_bytes, timeout=120)
                 except requests.RequestException as e:
                     logger.warning(f"Network error on Cloudflare Account #{idx}: {e}")
                     continue

@@ -12,12 +12,12 @@ from app.providers.cloudflare_provider import CloudflareASRProvider, _parse_vtt_
 
 def test_cloudflare_credential_validation():
     with patch("app.core.credential_manager.CredentialManager.get_cloudflare_accounts", return_value=[]):
-        p_invalid = CloudflareASRProvider(model_id="@cf/openai/whisper", api_key="")
+        p_invalid = CloudflareASRProvider(model_id="@cf/openai/whisper-large-v3-turbo", api_key="")
         valid, msg = p_invalid.validate_credentials()
         assert valid is False
 
     with patch("app.core.credential_manager.CredentialManager.get_cloudflare_accounts", return_value=[{"index": 1, "account_id": "12345678901234567890", "api_key": "token1234567890", "configured": True}]):
-        p_valid = CloudflareASRProvider(model_id="@cf/openai/whisper", api_key="valid")
+        p_valid = CloudflareASRProvider(model_id="@cf/openai/whisper-large-v3-turbo", api_key="valid")
         valid, msg = p_valid.validate_credentials()
         assert valid is True
 

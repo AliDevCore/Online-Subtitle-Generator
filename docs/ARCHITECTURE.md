@@ -24,7 +24,7 @@ flowchart TD
     end
 
     subgraph CloudEngine ["Cloud Engine"]
-        CF_ASR["CloudflareASRProvider (@cf/openai/whisper)"]
+        CF_ASR["CloudflareASRProvider (@cf/openai/whisper-large-v3-turbo)"]
         Pool["Multi-Account Failover Pool"]
     end
 

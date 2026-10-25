@@ -22,7 +22,7 @@ class VideoBatchWorker(QThread):
         self,
         batch_service: BatchService,
         asr_provider: str = "cloudflare",
-        asr_model: str = "@cf/openai/whisper",
+        asr_model: str = "@cf/openai/whisper-large-v3-turbo",
         parent=None
     ):
         super().__init__(parent)

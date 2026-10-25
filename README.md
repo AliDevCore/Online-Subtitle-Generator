@@ -1,6 +1,6 @@
 # Online Subtitle Generator
 
-**Online Subtitle Generator** is a high-performance Windows desktop application that extracts natural, grammatically aligned English subtitles (`.srt`) from video and audio files using **Cloudflare Workers AI Whisper** (`@cf/openai/whisper`).
+**Online Subtitle Generator** is a high-performance Windows desktop application that extracts natural, grammatically aligned English subtitles (`.srt`) from video and audio files using **Cloudflare Workers AI Whisper Large v3 Turbo** (`@cf/openai/whisper-large-v3-turbo`).
 
 Equipped with a **Multi-Account Failover Pool** (supporting up to 10 Cloudflare accounts) and an intelligent subtitle segmenter, it is designed for continuous, resilient, overnight batch processing without interruptions.
 
@@ -8,7 +8,7 @@ Equipped with a **Multi-Account Failover Pool** (supporting up to 10 Cloudflare 
 
 ## Key Features
 
-- **Cloudflare Workers AI Whisper Integration:** High-accuracy automated speech recognition powered by Cloudflare's serverless AI infrastructure.
+- **Cloudflare Workers AI Whisper Large v3 Turbo:** State-of-the-art speech recognition with native Voice Activity Detection (`vad_filter`) and anti-hallucination controls powered by Cloudflare's serverless AI infrastructure.
 - **Multi-Account Failover Pool (Up to 10 Accounts):**
   - Configure up to 10 separate Cloudflare accounts (Account ID & API Token).
   - When Account #1 exhausts its daily free quota (10,000 Neurons), processing automatically switches to Account #2, #3, and beyond without halting your batch.

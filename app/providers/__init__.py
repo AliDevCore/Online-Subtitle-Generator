@@ -11,7 +11,7 @@ from app.providers.cloudflare_provider import CloudflareASRProvider
 
 def get_asr_provider(
     provider_id: str = "cloudflare",
-    model_id: str = "@cf/openai/whisper",
+    model_id: str = "@cf/openai/whisper-large-v3-turbo",
     api_key: Optional[str] = None,
     **kwargs: Any
 ) -> BaseASRProvider:

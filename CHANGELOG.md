@@ -4,7 +4,7 @@
 
 ### Added
 - Complete Windows desktop application built with PySide6.
-- Cloud-hosted Speech-to-Text (ASR) via Cloudflare Workers AI Whisper (`@cf/openai/whisper`).
+- Cloud-hosted Speech-to-Text (ASR) via Cloudflare Workers AI Whisper Large v3 Turbo (`@cf/openai/whisper-large-v3-turbo`) with native VAD silence filtering.
 - Multi-Account High-Availability Failover Pool supporting up to 10 Cloudflare accounts with automatic token switching on quota exhaustion.
 - Intelligent subtitle segmentation and punctuation formatting adhering to standard subtitle conventions.
 - Boundary overlap reconciliation to eliminate duplicate sentences across chunk boundaries.

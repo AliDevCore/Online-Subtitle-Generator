@@ -32,7 +32,7 @@ class ASRWorker(QThread):
         video_path: Path | str,
         time_range: TimeRange,
         provider_id: str = "cloudflare",
-        model_id: str = "@cf/openai/whisper",
+        model_id: str = "@cf/openai/whisper-large-v3-turbo",
         output_path: Optional[Path | str] = None,
         output_srt_path: Optional[Path | str] = None,
         parent=None

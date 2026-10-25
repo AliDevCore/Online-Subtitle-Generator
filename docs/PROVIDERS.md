@@ -6,22 +6,22 @@ Online Subtitle Generator utilizes **Cloudflare Workers AI** as its primary spee
 
 ---
 
-## Cloudflare Workers AI (`@cf/openai/whisper`)
+## Cloudflare Workers AI (`@cf/openai/whisper-large-v3-turbo`)
 
 ### Official Documentation
 - **Workers AI Models**: [https://developers.cloudflare.com/workers-ai/models/](https://developers.cloudflare.com/workers-ai/models/)
-- **Whisper Documentation**: [https://developers.cloudflare.com/workers-ai/models/whisper/](https://developers.cloudflare.com/workers-ai/models/whisper/)
-- **Base Endpoint**: `https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/@cf/openai/whisper`
+- **Whisper Large v3 Turbo Documentation**: [https://developers.cloudflare.com/workers-ai/models/whisper-large-v3-turbo/](https://developers.cloudflare.com/workers-ai/models/whisper-large-v3-turbo/)
+- **Base Endpoint**: `https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/@cf/openai/whisper-large-v3-turbo`
 
 ### Model Capabilities
-- **Architecture**: OpenAI Whisper neural automatic speech recognition running on Cloudflare edge GPUs.
-- **Input**: Binary audio stream (`application/octet-stream`).
-- **Output**: JSON payload with segmented timestamps and transcribed text cues.
+- **Architecture**: OpenAI Whisper Large v3 Turbo neural automatic speech recognition running on Cloudflare edge GPUs.
+- **Input**: Base64 JSON payload with native `vad_filter: true` and `condition_on_previous_text: false`.
+- **Output**: JSON payload with segmented timestamps, word breakdown, and transcribed text cues.
 - **Audio Limits**: Maximum recommended chunk length is 5 minutes (300 seconds) for optimal latency and response reliability.
 
 ### Official Quotas & Limits
-- **Free Tier Allowance**: Cloudflare provides **10,000 Neurons per day free** across Workers AI models per account (equivalent to several hours of speech recognition audio per day).
-- **Paid Tier**: \$0.011 per 1,000 Neurons above the free daily allowance.
+- **Free Tier Allowance**: Cloudflare provides **10,000 Neurons per day free** across Workers AI models per account (equivalent to ~214 minutes / 3.5+ hours of audio per account daily at 46.6 Neurons/min).
+- **Paid Tier**: \$0.0005 per audio minute ($0.011 per 1,000 Neurons).
 - **Rate Limits**: Rate limits (HTTP 429) apply per token/account. The application handles rate limits automatically with exponential backoff and cool-down switching.
 
 ### Multi-Account High-Availability Pool

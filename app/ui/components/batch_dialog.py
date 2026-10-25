@@ -346,7 +346,7 @@ class BatchDialog(QDialog):
         self.active_video_worker = VideoBatchWorker(
             batch_service=self.batch_service,
             asr_provider="cloudflare",
-            asr_model="@cf/openai/whisper",
+            asr_model="@cf/openai/whisper-large-v3-turbo",
             parent=self
         )
         self.active_video_worker.item_updated.connect(self._on_video_item_update)

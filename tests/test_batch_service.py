@@ -30,7 +30,7 @@ def test_batch_service_failure_isolation(tmp_path):
 
     results = service.run_video_batch(
         asr_provider="cloudflare",
-        asr_model="@cf/openai/whisper"
+        asr_model="@cf/openai/whisper-large-v3-turbo"
     )
 
     assert len(results) == 2

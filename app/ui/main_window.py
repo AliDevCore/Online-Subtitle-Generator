@@ -195,7 +195,7 @@ class MainWindow(QMainWindow):
 
         # Engine & Multi-Account Details
         asr_layout.addWidget(QLabel("<b>3. ASR Engine & Account Pool:</b>"))
-        self.lbl_asr_engine = QLabel("Cloudflare Workers AI — OpenAI Whisper (@cf/openai/whisper)")
+        self.lbl_asr_engine = QLabel("Cloudflare Workers AI — OpenAI Whisper Large v3 Turbo (@cf/openai/whisper-large-v3-turbo)")
         self.lbl_asr_engine.setStyleSheet("color: #f1f5f9; font-weight: 600; font-size: 12px;")
         asr_layout.addWidget(self.lbl_asr_engine)
 
@@ -384,7 +384,7 @@ class MainWindow(QMainWindow):
                 video_path=Path(video_path),
                 time_range=time_range,
                 provider_id="cloudflare",
-                model_id="@cf/openai/whisper",
+                model_id="@cf/openai/whisper-large-v3-turbo",
                 output_path=out_srt
             )
             self.active_worker.progress.connect(self._on_progress_update)

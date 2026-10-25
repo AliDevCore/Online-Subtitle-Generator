@@ -169,16 +169,16 @@ VERIFIED_ASR_PROVIDERS: List[ProviderInfo] = [
     ProviderInfo(
         provider_id="cloudflare",
         display_name="Cloudflare Workers AI",
-        model_id="@cf/openai/whisper",
-        model_display_name="OpenAI Whisper (@cf/openai/whisper)",
+        model_id="@cf/openai/whisper-large-v3-turbo",
+        model_display_name="OpenAI Whisper Large v3 Turbo (@cf/openai/whisper-large-v3-turbo)",
         pipeline="ASR",
         is_free=True,
-        pricing_desc="10,000 Neurons/day free; Paid: $0.011 per 1,000 Neurons",
-        free_tier_desc="Free tier offers 10,000 Neurons daily across Workers AI models",
+        pricing_desc="10,000 Neurons/day free; Paid: $0.0005 per audio minute (46.6 Neurons/min)",
+        free_tier_desc="Free tier offers 10,000 Neurons daily (~214 minutes / 3.5+ hours of audio daily per account)",
         supports_timestamps=True,
         max_duration_sec=300,  # 5-minute chunks default
         requires_key=True,
-        doc_url="https://developers.cloudflare.com/workers-ai/models/whisper/",
+        doc_url="https://developers.cloudflare.com/workers-ai/models/whisper-large-v3-turbo/",
         verification_date="2026-10"
     ),
 ]
