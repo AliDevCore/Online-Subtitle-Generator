@@ -181,6 +181,7 @@ class CloudflareASRProvider(BaseASRProvider):
                         payload = {
                             "audio": b64_audio,
                             "language": "en",
+                            "initial_prompt": "Hello, welcome. Please transcribe with clear punctuation, commas, periods, question marks, and dialogue.",
                             "vad_filter": False,
                             "condition_on_previous_text": False
                         }

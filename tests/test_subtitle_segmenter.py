@@ -253,3 +253,21 @@ def test_resegment_cues_eliminates_user_reported_silence_hallucinations():
     assert filtered_cues[1].index == 2
     assert filtered_cues[2].index == 3
 
+
+def test_resegment_preserves_short_dialogue_lines():
+    """Verify that distinct dialogue cues are never glued into 14-word run-on paragraphs."""
+    raw = [
+        SubtitleCue(1, 119800, 121500, "I'm sorry"),
+        SubtitleCue(2, 121550, 122800, "you're right"),
+        SubtitleCue(3, 122850, 124500, "and I've been being a bit of a brat"),
+        SubtitleCue(4, 124550, 125750, "I know")
+    ]
+    fixed = resegment_cues(raw)
+    assert len(fixed) >= 3
+    # Distinct cues are preserved
+    assert any("I'm sorry" in c.text for c in fixed)
+    assert any("I know" in c.text for c in fixed)
+    # Never fused into a single giant 14-word cue!
+    assert all(len(c.text.split()) <= 10 for c in fixed)
+
+

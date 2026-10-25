@@ -435,38 +435,88 @@ def _format_dialogue_if_applicable(tokens: List[Dict[str, Any]], full_text: str)
 def resegment_cues(
     raw_cues: List[SubtitleCue],
     pause_threshold_sec: float = 0.40,
-    max_words_per_cue: int = 14,
-    max_duration_sec: float = 6.0
+    max_words_per_cue: int = 10,
+    max_duration_sec: float = 4.5,
+    min_cue_duration_ms: int = 800
 ) -> List[SubtitleCue]:
     """
-    Take existing SubtitleCues with broken line splits, interpolate word timestamps,
-    and re-segment them into natural sentence-aligned cues.
+    Refine existing SubtitleCues from ASR WebVTT or segment streams:
+    1. Filters out silence / hallucination artifacts.
+    2. Splits internal completed sentences into separate readable cues.
+    3. Fixes broken trailing conjunctions/prepositions (e.g. 'Amen. But' -> 'Amen.' and 'But ...').
+    4. Merges ONLY genuine broken fragments (ending in prepositions/articles like 'to', 'the')
+       while strictly preserving natural short dialogue lines.
+    5. Formats two-speaker dialogue turns with hyphens (- Speaker 1 / - Speaker 2).
+    6. Ensures monotonic non-colliding timestamps.
     """
     if not raw_cues:
         return []
 
-    # Filter out hallucination cues before decomposing into words
     clean_raw = [c for c in raw_cues if not is_hallucination_cue(c.text)]
     if not clean_raw:
         return []
 
-    words: List[Dict[str, Any]] = []
-    for cue in clean_raw:
-        cue_words = cue.text.split()
-        if not cue_words:
+    # Step 1: Split any cue that contains an internal terminal sentence boundary (. ? !)
+    split_cues: List[SubtitleCue] = []
+    for c in clean_raw:
+        txt = c.text.strip()
+        sentences = [s.strip() for s in re.split(r"(?<=[.?!])\s+", txt) if s.strip()]
+        if len(sentences) > 1 and len(txt.split()) >= 4:
+            tot_words = len(txt.split())
+            dur = c.end_ms - c.start_ms
+            cur_st = c.start_ms
+            for s in sentences:
+                s_words = len(s.split())
+                s_dur = int(dur * (s_words / tot_words)) if tot_words else 1000
+                s_end = min(c.end_ms, cur_st + s_dur)
+                split_cues.append(SubtitleCue(len(split_cues) + 1, cur_st, s_end, _clean_cue_text(s)))
+                cur_st = s_end
+        else:
+            split_cues.append(SubtitleCue(len(split_cues) + 1, c.start_ms, c.end_ms, _clean_cue_text(txt)))
+
+    # Step 2: Fix trailing conjunctions (e.g. "Amen. But" -> "Amen." and "But ...")
+    for i in range(len(split_cues) - 1):
+        cur = split_cues[i]
+        nxt = split_cues[i + 1]
+        words = cur.text.split()
+        if len(words) >= 2:
+            last_word = words[-1].lower().strip(".,!?:;\"'")
+            prev_word = words[-2]
+            if last_word in ("but", "and", "or", "so", "because", "yet") and any(prev_word.endswith(p) for p in (".", "?", "!")):
+                cur.text = " ".join(words[:-1]).strip()
+                nxt.text = _clean_cue_text(f"{words[-1]} {nxt.text}")
+
+    # Step 3: Merge only genuine broken fragments (ending in prepositions/articles/conjunctions)
+    INCOMPLETE_CONNECTORS = {"the", "a", "an", "to", "of", "in", "for", "on", "with", "at", "by", "that", "and", "but", "or"}
+    merged: List[SubtitleCue] = []
+    for c in split_cues:
+        if not merged:
+            merged.append(c)
             continue
-        c_dur_ms = max(cue.end_ms - cue.start_ms, 500)
-        w_dur_s = (c_dur_ms / 1000.0) / len(cue_words)
-        st_s = cue.start_ms / 1000.0
+        prev = merged[-1]
+        p_words = prev.text.split()
+        c_words = c.text.split()
+        combined_words = len(p_words) + len(c_words)
+        combined_dur_sec = (c.end_ms - prev.start_ms) / 1000.0
+        last_word_clean = p_words[-1].lower().strip(".,!?:;\"'") if p_words else ""
 
-        for i, w in enumerate(cue_words):
-            w_start = st_s + (i * w_dur_s)
-            w_end = w_start + w_dur_s
-            words.append({"word": w, "start": w_start, "end": w_end})
+        if last_word_clean in INCOMPLETE_CONNECTORS and combined_words <= max_words_per_cue and combined_dur_sec <= max_duration_sec:
+            c_text_clean = c.text[0].lower() + c.text[1:] if len(c.text) > 1 else c.text.lower()
+            prev.text = f"{prev.text} {c_text_clean}"
+            prev.end_ms = c.end_ms
+        else:
+            merged.append(c)
 
-    return segment_words_into_cues(
-        words=words,
-        pause_threshold_sec=pause_threshold_sec,
-        max_words_per_cue=max_words_per_cue,
-        max_duration_sec=max_duration_sec
-    )
+    # Step 4: Format internal two-person dialogues with hyphens if present
+    for c in merged:
+        t = c.text.strip()
+        m = re.search(r"([.?!])\s+([A-Z]|well|no|yes|yeah|sure|okay|i know)", t, re.IGNORECASE)
+        if m and "\n" not in t and not t.startswith("-"):
+            idx = m.start(1) + 1
+            p1 = t[:idx].strip()
+            p2 = t[idx:].strip()
+            if len(p1.split()) >= 1 and len(p2.split()) >= 1:
+                p2 = p2[0].upper() + p2[1:] if p2 else p2
+                c.text = f"- {p1}\n- {p2}"
+
+    return _resolve_cue_collisions(merged, min_duration_ms=min_cue_duration_ms)
