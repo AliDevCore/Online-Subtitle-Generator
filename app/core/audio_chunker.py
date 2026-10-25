@@ -5,6 +5,7 @@ and chronological subtitle reconciliation.
 
 from __future__ import annotations
 import math
+import re
 from pathlib import Path
 from typing import List, Tuple, Optional
 from app.core.types import AudioChunk, SubtitleCue, SubtitleFile
@@ -57,11 +58,12 @@ class AudioChunker:
     @staticmethod
     def reconcile_and_merge_cues(
         chunk_cues_list: List[List[SubtitleCue]],
-        overlap_tolerance_ms: int = 1500
+        overlap_tolerance_ms: int = 2000
     ) -> List[SubtitleCue]:
         """
         Merge subtitle cues from sequential overlapping chunks chronologically.
         Reconciles duplicate sentences or partial phrases appearing within the overlap window.
+        Preserves all natural dialogues and short conversational responses (e.g. 'So?', 'Sure.', 'No.', 'Why?').
         """
         all_cues: List[SubtitleCue] = []
         from app.core.subtitle_segmenter import is_hallucination_cue
@@ -84,36 +86,43 @@ class AudioChunker:
 
             prev = merged[-1]
 
-            # Case 1: Exact or near duplicate text starting within overlap window
-            is_same_text = cue.text.strip().lower() == prev.text.strip().lower()
+            clean_cue = re.sub(r"[^\w\s]", "", cue.text.strip().lower())
+            clean_prev = re.sub(r"[^\w\s]", "", prev.text.strip().lower())
             start_diff = abs(cue.start_ms - prev.start_ms)
 
+            # Case 1: Exact or near-identical duplicate text starting within overlap window
+            is_same_text = (clean_cue == clean_prev) and bool(clean_cue)
             if is_same_text and start_diff < overlap_tolerance_ms:
-                # Merge into longer span if necessary, avoid duplicate cue
+                # Merge into longer span, keep version with richer text/punctuation
                 prev.end_ms = max(prev.end_ms, cue.end_ms)
+                if len(cue.text.strip()) > len(prev.text.strip()):
+                    prev.text = cue.text
                 continue
 
-            # Case 2: Partial overlap / duplicate snippet or shared boundary phrase
-            if cue.start_ms < prev.end_ms + 1000:
-                cue_clean = cue.text.strip().lower()
-                prev_clean = prev.text.strip().lower()
-
-                # If one is contained in the other, treat as duplicate
-                if cue_clean in prev_clean:
-                    continue
-                if prev_clean in cue_clean:
-                    prev.text = cue.text
-                    prev.end_ms = max(prev.end_ms, cue.end_ms)
-                    continue
+            # Case 2: True temporal overlap at chunk boundary (cue.start_ms < prev.end_ms)
+            # Only applies when cues actually collide in time, NEVER to separate consecutive cues!
+            if cue.start_ms < prev.end_ms:
+                # If they start virtually simultaneously (< 1000ms apart) and one is an exact full subphrase of the other:
+                if start_diff < 1000 and clean_cue and clean_prev:
+                    w_cue = clean_cue.split()
+                    w_prev = clean_prev.split()
+                    # Boundary truncation: e.g. "hello ladies and" vs "hello ladies and gentlemen"
+                    if " ".join(w_cue) in " ".join(w_prev):
+                        prev.end_ms = max(prev.end_ms, cue.end_ms)
+                        continue
+                    elif " ".join(w_prev) in " ".join(w_cue):
+                        prev.text = cue.text
+                        prev.end_ms = max(prev.end_ms, cue.end_ms)
+                        continue
 
                 # Suffix-prefix word overlap reconciliation across chunk boundaries
                 # e.g. "and then we went to the store" + "we went to the store and bought milk"
-                w_prev = prev.text.split()
-                w_cue = cue.text.split()
+                w_prev_raw = prev.text.split()
+                w_cue_raw = cue.text.split()
                 merged_phrase = None
-                for k in range(min(len(w_prev), len(w_cue)), 2, -1):
-                    if [w.lower().strip(".,!?:;") for w in w_prev[-k:]] == [w.lower().strip(".,!?:;") for w in w_cue[:k]]:
-                        merged_phrase = " ".join(w_prev + w_cue[k:])
+                for k in range(min(len(w_prev_raw), len(w_cue_raw)), 1, -1):
+                    if [w.lower().strip(".,!?:;\"'") for w in w_prev_raw[-k:]] == [w.lower().strip(".,!?:;\"'") for w in w_cue_raw[:k]]:
+                        merged_phrase = " ".join(w_prev_raw + w_cue_raw[k:])
                         break
 
                 if merged_phrase:
@@ -121,12 +130,11 @@ class AudioChunker:
                     prev.end_ms = max(prev.end_ms, cue.end_ms)
                     continue
 
-                # Ensure non-merged boundaries do not collide: clamp start boundary
-                if cue.start_ms < prev.end_ms:
-                    if cue.end_ms > prev.end_ms:
-                        cue.start_ms = prev.end_ms
-                    else:
-                        prev.end_ms = cue.start_ms
+                # Non-duplicate overlapping boundary: clamp timestamps so they do not collide
+                if cue.end_ms > prev.end_ms:
+                    cue.start_ms = prev.end_ms
+                else:
+                    prev.end_ms = cue.start_ms
 
             if cue.end_ms > cue.start_ms:
                 merged.append(cue)

@@ -176,7 +176,7 @@ class CloudflareASRProvider(BaseASRProvider):
                         b64_audio = base64.b64encode(audio_bytes).decode("ascii")
                         payload = {
                             "audio": b64_audio,
-                            "vad_filter": True,
+                            "vad_filter": False,
                             "condition_on_previous_text": False
                         }
                         headers = {

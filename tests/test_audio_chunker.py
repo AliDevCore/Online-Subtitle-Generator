@@ -75,3 +75,42 @@ def test_reconcile_phrase_overlap_across_chunks():
     assert merged[0].text == "First cue"
     assert merged[1].text == "and then we went to the store and bought milk"
     assert merged[2].text == "Last cue"
+
+
+def test_preserve_short_dialogue_responses():
+    """Verify that short natural responses (No, So, Sure, Me) are NEVER dropped."""
+    dialogue_cues = [
+        SubtitleCue(1, 1000, 3000, "I know that."),
+        SubtitleCue(2, 3200, 4000, "No."),
+        SubtitleCue(3, 4200, 6000, "She is a good person."),
+        SubtitleCue(4, 6300, 7000, "So?"),
+        SubtitleCue(5, 7200, 9000, "Are you sure?"),
+        SubtitleCue(6, 9200, 10000, "Sure.")
+    ]
+    merged = AudioChunker.reconcile_and_merge_cues([dialogue_cues])
+    assert len(merged) == 6
+    assert [c.text for c in merged] == [
+        "I know that.",
+        "No.",
+        "She is a good person.",
+        "So?",
+        "Are you sure?",
+        "Sure."
+    ]
+
+
+def test_chunk_boundary_truncation_merge():
+    """Verify that boundary partial sentence truncation merges cleanly."""
+    chunk1_cues = [
+        SubtitleCue(1, 298000, 299500, "Hello ladies and")
+    ]
+    chunk2_cues = [
+        SubtitleCue(1, 298050, 301000, "Hello ladies and gentlemen"),
+        SubtitleCue(2, 302000, 304000, "Next sentence")
+    ]
+    merged = AudioChunker.reconcile_and_merge_cues([chunk1_cues, chunk2_cues])
+    assert len(merged) == 2
+    assert merged[0].text == "Hello ladies and gentlemen"
+    assert merged[0].end_ms == 301000
+    assert merged[1].text == "Next sentence"
+
