@@ -10,6 +10,7 @@ def test_vtt_timestamp_variations():
     assert _parse_vtt_timestamp("05,660") == 5660
     assert _parse_vtt_timestamp("01:23.456") == 83456
     assert _parse_vtt_timestamp("00:01:23,456") == 83456
+    assert _parse_vtt_timestamp("00:01:23.456 line:0% position:50%") == 83456
     assert _parse_vtt_timestamp("") == 0
     assert _parse_vtt_timestamp("   ") == 0
 
@@ -39,3 +40,19 @@ be so boring?
     assert cues[2].start_ms == 6580
     assert cues[2].end_ms == 8080
     assert cues[2].text == "be so boring?"
+
+
+def test_cloudflare_vtt_single_newline_header():
+    """Verify first cue directly after WEBVTT header without blank line is preserved."""
+    sample = """WEBVTT
+00:00:01.000 --> 00:00:04.000
+Opening dialogue sentence.
+
+00:00:04.500 --> 00:00:08.000
+Second sentence.
+"""
+    cues = _parse_cloudflare_vtt(sample)
+    assert len(cues) == 2
+    assert cues[0].start_ms == 1000
+    assert cues[0].text == "Opening dialogue sentence."
+

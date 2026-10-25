@@ -34,6 +34,8 @@ def _parse_vtt_timestamp(ts: str) -> int:
     ts = ts.strip().replace(",", ".")
     if not ts:
         return 0
+    # Strip any trailing cue settings (e.g. '00:05.000 line:0% position:50%')
+    ts = ts.split()[0]
     parts = ts.split(":")
     try:
         if len(parts) == 1:
@@ -56,7 +58,9 @@ def _parse_cloudflare_vtt(vtt_text: str) -> List[SubtitleCue]:
         lines = [l.strip() for l in block.split("\n") if l.strip()]
         if not lines:
             continue
-        if lines[0].startswith("WEBVTT") or lines[0].startswith("NOTE"):
+        # Strip header/NOTE lines without skipping cues that share the block
+        lines = [l for l in lines if not l.startswith("WEBVTT") and not l.startswith("NOTE")]
+        if not lines:
             continue
 
         ts_idx = -1
@@ -176,6 +180,7 @@ class CloudflareASRProvider(BaseASRProvider):
                         b64_audio = base64.b64encode(audio_bytes).decode("ascii")
                         payload = {
                             "audio": b64_audio,
+                            "language": "en",
                             "vad_filter": False,
                             "condition_on_previous_text": False
                         }
@@ -322,7 +327,19 @@ class CloudflareASRProvider(BaseASRProvider):
             raw_cues = _parse_cloudflare_vtt(vtt_text)
             cues = resegment_cues(raw_cues, pause_threshold_sec=0.40)
 
-        # 3. Fallback to raw text if still empty
+        # 3. Parse segments array if vtt was absent or empty
+        if not cues and result.get("segments"):
+            raw_cues = []
+            for seg in result.get("segments", []):
+                s_txt = seg.get("text", "").strip()
+                s_st = int(float(seg.get("start", 0.0)) * 1000)
+                s_end = int(float(seg.get("end", seg.get("start", 0.0) + 1.0)) * 1000)
+                if s_txt and s_end > s_st and not is_hallucination_cue(s_txt):
+                    raw_cues.append(SubtitleCue(len(raw_cues) + 1, s_st, s_end, s_txt))
+            if raw_cues:
+                cues = resegment_cues(raw_cues, pause_threshold_sec=0.40)
+
+        # 4. Fallback to raw text if still empty
         if not cues:
             raw_text = result.get("text", "").strip()
             if raw_text and not is_hallucination_cue(raw_text):
