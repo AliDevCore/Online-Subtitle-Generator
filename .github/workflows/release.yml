@@ -2,24 +2,41 @@ name: Build and Release Windows Executable
 
 on:
   push:
-    branches:
-      - main
-      - master
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag (e.g. v1.0.10). Leave blank to auto-generate.'
+        required: false
+        default: ''
+      release_title:
+        description: 'Release Title. Leave blank to auto-generate.'
+        required: false
+        default: ''
+      draft:
+        description: 'Create as Draft Release'
+        type: boolean
+        default: false
+      prerelease:
+        description: 'Create as Pre-release'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 jobs:
   build:
+    name: Build & Release Portable Windows Bundle
     runs-on: windows-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Set up Python
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -29,7 +46,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
-      - name: Install FFmpeg
+      - name: Setup FFmpeg & FFprobe
         shell: pwsh
         run: |
           if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
@@ -44,50 +61,73 @@ jobs:
             echo "$chocoLibBin" >> $env:GITHUB_PATH
           }
           ffmpeg -version
+          ffprobe -version
 
-      - name: Run automated tests
+      - name: Run automated test suite
         run: |
           python -m pytest tests -v
 
-      - name: Build Windows Executable
-        run: |
-          python packaging/build_windows.py
-
-      - name: Create Portable Zip Package
+      - name: Determine Release Tag & Title
+        id: release_info
         shell: pwsh
         run: |
-          Compress-Archive -Path "dist/Online Subtitle Generator/*" -DestinationPath "Online-Subtitle-Generator-Portable.zip" -Force
+          $inputTag = "${{ github.event.inputs.tag_name }}".Trim()
+          if ($inputTag) {
+            $tag = $inputTag
+          } elseif ("${{ github.ref }}".StartsWith("refs/tags/v")) {
+            $tag = "${{ github.ref_name }}"
+          } else {
+            $latestTag = git describe --tags --abbrev=0 2>$null
+            if (-not $latestTag) { $latestTag = "v1.0.9" }
+            $versionMatch = [regex]::Match($latestTag, '\d+$')
+            if ($versionMatch.Success) {
+              $nextNum = [int]$versionMatch.Value + 1
+              $base = $latestTag.Substring(0, $versionMatch.Index)
+              $tag = "$base$nextNum"
+            } else {
+              $tag = "v1.0.${{ github.run_number }}"
+            }
+          }
 
-      - name: Upload Artifact
+          $inputTitle = "${{ github.event.inputs.release_title }}".Trim()
+          if ($inputTitle) {
+            $title = $inputTitle
+          } else {
+            $title = "Online Subtitle Generator $tag"
+          }
+
+          Write-Host "Tag: $tag"
+          Write-Host "Title: $title"
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "title=$title" >> $env:GITHUB_OUTPUT
+
+      - name: Build Windows Executable & Bundle Dependencies
+        env:
+          SKIP_UTILITY_DEPLOY: "1"
+          CI: "true"
+        run: |
+          python packaging/build_windows.py --zip --tag "${{ steps.release_info.outputs.tag }}"
+
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Online-Subtitle-Generator-Windows-Portable
-          path: Online-Subtitle-Generator-Portable.zip
-
-      - name: Generate Release Version & Tag
-        id: versioning
-        shell: pwsh
-        run: |
-          if ("${{ github.ref }}".StartsWith("refs/tags/v")) {
-            $tag = "${{ github.ref_name }}"
-            $title = "Online Subtitle Generator $tag"
-          } else {
-            $tag = "v1.0.${{ github.run_number }}"
-            $title = "Online Subtitle Generator v1.0.${{ github.run_number }}"
-          }
-          Write-Host "Target Tag: $tag"
-          Write-Host "Release Title: $title"
-          "tag=$tag" >> $env:GITHUB_OUTPUT
-          "title=$title" >> $env:GITHUB_OUTPUT
+          path: |
+            dist/*.zip
+            dist/*.sha256
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.versioning.outputs.tag }}
-          name: ${{ steps.versioning.outputs.title }}
-          files: Online-Subtitle-Generator-Portable.zip
+          tag_name: ${{ steps.release_info.outputs.tag }}
+          name: ${{ steps.release_info.outputs.title }}
+          files: |
+            dist/Online-Subtitle-Generator-*-Windows-Portable.zip
+            dist/Online-Subtitle-Generator-Portable.zip
+            dist/*.sha256
           generate_release_notes: true
-          draft: false
-          prerelease: false
+          draft: ${{ github.event.inputs.draft || false }}
+          prerelease: ${{ github.event.inputs.prerelease || false }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

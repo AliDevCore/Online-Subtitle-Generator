@@ -32,7 +32,7 @@ Equipped with a **Multi-Account Failover Pool** (supporting up to 10 Cloudflare 
 ## Installation & Setup
 
 1. **Pre-built Portable Executable (Recommended):**
-   - Download the latest portable release archive (`Online-Subtitle-Generator-v*.zip`) from the [Releases](https://github.com/your-username/Online-Subtitle-Generator/releases) page.
+   - Download the latest portable release archive (`Online-Subtitle-Generator-v*.zip`) from the [Releases](https://github.com/AliDevCore/Online-Subtitle-Generator/releases) page.
    - Extract the `.zip` archive to any directory of your choice.
    - Run `Online Subtitle Generator.exe`.
 2. **API Credentials:**
@@ -42,15 +42,15 @@ Equipped with a **Multi-Account Failover Pool** (supporting up to 10 Cloudflare 
 
 ---
 
-## Development
+## Development & Building
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/Online-Subtitle-Generator.git
+git clone https://github.com/AliDevCore/Online-Subtitle-Generator.git
 cd "Online Subtitle Generator"
 
 # Install dependencies
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 
 # Run test suite
 pytest
@@ -58,9 +58,14 @@ pytest
 # Launch application
 python app/main.py
 
-# Build portable Windows executable
-python packaging/build_windows.py
+# Build portable Windows executable & bundle all dependencies + FFmpeg
+python packaging/build_windows.py --zip
+
+# Automated 1-Click Release Publishing (or double-click release.bat)
+python scripts/publish_release.py
 ```
+
+For complete release instructions, see the [Release Guide](docs/RELEASE_GUIDE.md).
 
 ---
 

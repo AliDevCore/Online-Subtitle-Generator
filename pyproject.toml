@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "onlinesubtitlegenerator"
-version = "1.0.0"
+version = "1.0.10"
 authors = [{ name = "OnlineSub" }]
 description = "High-performance AI Subtitle Generator Windows Desktop Application"
 readme = "README.md"
