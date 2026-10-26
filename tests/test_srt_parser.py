@@ -54,3 +54,23 @@ def test_validate_cues():
     ]
     issues = SRTParser.validate_cues(bad_cues)
     assert len(issues) >= 2
+
+
+def test_clean_trailing_punctuation():
+    # Exclamation mark stripped
+    assert SRTParser.clean_trailing_punctuation("Listen!") == "Listen"
+    # Period stripped
+    assert SRTParser.clean_trailing_punctuation("I didn't hear you.") == "I didn't hear you"
+    # Comma stripped
+    assert SRTParser.clean_trailing_punctuation("I tried to ring the bell,") == "I tried to ring the bell"
+    # Persian comma stripped
+    assert SRTParser.clean_trailing_punctuation("سلام،") == "سلام"
+    # Question marks strictly preserved
+    assert SRTParser.clean_trailing_punctuation("Where's Mom?") == "Where's Mom?"
+    assert SRTParser.clean_trailing_punctuation("چطوری؟") == "چطوری؟"
+    # Internal punctuation preserved
+    assert SRTParser.clean_trailing_punctuation("Oh, hi. Hey!") == "Oh, hi. Hey"
+    # Multiple trailing punctuation marks stripped
+    assert SRTParser.clean_trailing_punctuation("Really?!...") == "Really?"
+    # HTML tag handling
+    assert SRTParser.clean_trailing_punctuation("<i>Listen!</i>") == "<i>Listen</i>"

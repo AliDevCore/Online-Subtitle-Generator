@@ -109,7 +109,8 @@ def build():
                 shutil.copy2(item, dest)
         print(f"Deployment complete! Executable is ready at:\n{UTILITY_DEST / 'Online Subtitle Generator.exe'}")
     except Exception as e:
-        print(f"ERROR: Local utility deployment failed ({e}). Build in dist is ready.")
+        print(f"ERROR: Local utility deployment failed ({e}). Check if application is running!")
+        raise
 
 
 if __name__ == "__main__":

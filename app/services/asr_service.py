@@ -229,6 +229,10 @@ class ASRService:
             final_cues = AudioChunker.reconcile_and_merge_cues(chunk_cues_collection)
             final_sub = SubtitleFile(cues=final_cues, language="en")
 
+            # Clean trailing punctuation from cues (strip trailing '.', '!', ',', '،' while keeping '?' / '؟')
+            for cue in final_sub.cues:
+                cue.text = SRTParser.clean_trailing_punctuation(cue.text)
+
             # 6. Validate final SRT
             issues = SRTParser.validate_cues(final_sub.cues, time_range_tuple)
             if issues:

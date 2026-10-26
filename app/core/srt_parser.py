@@ -105,6 +105,41 @@ class SRTParser:
         path.write_text(content, encoding="utf-8")
         return path
 
+    TRAILING_PUNCTUATION_TO_STRIP = {".", "!", ",", "،"}
+
+    @classmethod
+    def clean_trailing_punctuation_line(cls, line: str) -> str:
+        """
+        Strip trailing exclamation marks (!), commas (,, ،), or periods (.) from the end of a line.
+        Strictly preserves question marks (? and ؟) and internal punctuation.
+        Also handles closing HTML/formatting tags like </i> or </font>.
+        """
+        stripped = line.rstrip()
+        if not stripped:
+            return line
+
+        tag_match = re.search(r"(</[a-zA-Z0-9]+>)+$", stripped)
+        closing_tags = ""
+        if tag_match:
+            closing_tags = tag_match.group(0)
+            stripped = stripped[:tag_match.start()].rstrip()
+
+        while stripped and stripped[-1] in cls.TRAILING_PUNCTUATION_TO_STRIP:
+            stripped = stripped[:-1].rstrip()
+
+        return stripped + closing_tags
+
+    @classmethod
+    def clean_trailing_punctuation(cls, text: str) -> str:
+        """
+        Remove trailing exclamation marks (!), commas (,, ،), or periods (.) from the end of sentences/lines.
+        Strictly preserves question marks (? and ؟) and preserves all punctuation in the middle of sentences.
+        """
+        if not text:
+            return text
+        lines = text.split("\n")
+        return "\n".join(cls.clean_trailing_punctuation_line(l) for l in lines)
+
     @staticmethod
     def validate_cues(cues: List[SubtitleCue], time_range: Optional[Tuple[float, float]] = None) -> List[str]:
         """
