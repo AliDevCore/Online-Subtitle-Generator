@@ -4,15 +4,16 @@ Allows queuing multiple video files with individual time ranges and automated ov
 """
 
 from __future__ import annotations
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget,
     QTableWidgetItem, QFileDialog, QHeaderView, QMessageBox, QLabel,
-    QCheckBox, QWidget, QProgressBar, QFrame, QSpinBox
+    QCheckBox, QWidget, QProgressBar, QFrame, QSpinBox, QPlainTextEdit
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QTextCursor
 
 from app.core.config import get_app_icon
 from app.services.batch_service import BatchService, BatchVideoItem, VIDEO_EXTENSIONS
@@ -93,13 +94,14 @@ class BatchDialog(QDialog):
     def __init__(self, batch_service: BatchService, parent=None, **kwargs):
         super().__init__(parent)
         self.setWindowTitle("Online Subtitle Generator — Batch Video Processing Manager")
-        self.resize(920, 600)
+        self.resize(940, 680)
         app_icon = get_app_icon()
         if not app_icon.isNull():
             self.setWindowIcon(app_icon)
         self.batch_service = batch_service
         self.active_video_worker: Optional[VideoBatchWorker] = None
         self._updating_table = False
+        self._current_processing_name: Optional[str] = None
 
         self._build_ui()
         self._refresh_video_table()
@@ -167,6 +169,28 @@ class BatchDialog(QDialog):
         self.progress_video = QProgressBar()
         self.progress_video.setValue(0)
         root_layout.addWidget(self.progress_video)
+
+        # Current File Live Log Box (cleared per file)
+        self.lbl_file_log_title = QLabel("📄 Current File Live Progress:")
+        self.lbl_file_log_title.setStyleSheet("font-weight: 600; font-size: 12px; color: #94a3b8;")
+        root_layout.addWidget(self.lbl_file_log_title)
+
+        self.txt_file_log = QPlainTextEdit()
+        self.txt_file_log.setReadOnly(True)
+        self.txt_file_log.setFixedHeight(130)
+        self.txt_file_log.setPlaceholderText("Live progress logs for the currently processing video will appear here...")
+        self.txt_file_log.setStyleSheet(
+            "QPlainTextEdit {"
+            "  background-color: #0f172a;"
+            "  color: #e2e8f0;"
+            "  border: 1px solid #334155;"
+            "  border-radius: 6px;"
+            "  font-family: Consolas, 'Segoe UI Mono', monospace;"
+            "  font-size: 11px;"
+            "  padding: 6px;"
+            "}"
+        )
+        root_layout.addWidget(self.txt_file_log)
 
         # Bottom Bar
         bottom_box = QHBoxLayout()
@@ -342,6 +366,8 @@ class BatchDialog(QDialog):
         self._set_video_ui_busy(True)
         self.progress_video.setValue(0)
         self.frame_video_rate_limit.setVisible(False)
+        self._current_processing_name = None
+        self.txt_file_log.clear()
 
         self.active_video_worker = VideoBatchWorker(
             batch_service=self.batch_service,
@@ -354,17 +380,38 @@ class BatchDialog(QDialog):
         self.active_video_worker.rate_limit_cleared.connect(self._on_video_rate_limit_cleared)
         self.active_video_worker.batch_finished.connect(self._on_video_batch_finished)
         self.active_video_worker.failed.connect(self._on_video_batch_failed)
+        self.active_video_worker.log_emitted.connect(self._on_video_log_message)
         self.active_video_worker.start()
 
     def _cancel_video_batch(self):
         if self.active_video_worker:
             self.lbl_video_rate_limit.setText("Cancelling video batch...")
+            time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self.txt_file_log.appendPlainText(f"[{time_str}] [WARNING] Batch cancellation requested by user...")
+            self.txt_file_log.moveCursor(QTextCursor.End)
             self.active_video_worker.cancel()
+
+    def _on_video_log_message(self, line: str):
+        self.txt_file_log.appendPlainText(line)
+        self.txt_file_log.moveCursor(QTextCursor.End)
 
     def _on_video_item_update(self, name: str, idx: int, total: int, status: str):
         pct = int(((idx - 1) / max(total, 1)) * 100)
         self.progress_video.setValue(pct)
         self._refresh_video_table()
+
+        if status == "TRANSCRIBING":
+            if self._current_processing_name != name:
+                self._current_processing_name = name
+                # Clean textbox for the new file (strictly non-cumulative)
+                self.txt_file_log.clear()
+                time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                self.txt_file_log.appendPlainText(f"[{time_str}] Started processing ({idx}/{total}): {name}")
+                self.txt_file_log.moveCursor(QTextCursor.End)
+        elif status == "COMPLETED" and self._current_processing_name == name:
+            time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self.txt_file_log.appendPlainText(f"[{time_str}] [100%] Subtitle generation completed for: {name}")
+            self.txt_file_log.moveCursor(QTextCursor.End)
 
     def _on_video_rate_limit(self, provider: str, rem_sec: int, attempt: int, reason: str):
         self.frame_video_rate_limit.setVisible(True)
@@ -381,6 +428,12 @@ class BatchDialog(QDialog):
         self.progress_video.setValue(100)
         self.frame_video_rate_limit.setVisible(False)
         self._refresh_video_table()
+
+        time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.txt_file_log.appendPlainText(
+            f"[{time_str}] Video Batch Completed! Successful: {success_cnt}, Failed/Cancelled: {failed_cnt}"
+        )
+        self.txt_file_log.moveCursor(QTextCursor.End)
 
         QMessageBox.information(
             self,
