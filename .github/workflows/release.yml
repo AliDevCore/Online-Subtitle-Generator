@@ -2,6 +2,9 @@ name: Build and Release Windows Executable
 
 on:
   push:
+    branches:
+      - main
+      - master
     tags:
       - 'v*'
   workflow_dispatch:
@@ -64,42 +67,18 @@ jobs:
           ffprobe -version
 
       - name: Run automated test suite
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: |
           python -m pytest tests -v
 
       - name: Determine Release Tag & Title
         id: release_info
-        shell: pwsh
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag_name }}
+          INPUT_TITLE: ${{ github.event.inputs.release_title }}
         run: |
-          $inputTag = "${{ github.event.inputs.tag_name }}".Trim()
-          if ($inputTag) {
-            $tag = $inputTag
-          } elseif ("${{ github.ref }}".StartsWith("refs/tags/v")) {
-            $tag = "${{ github.ref_name }}"
-          } else {
-            $latestTag = git describe --tags --abbrev=0 2>$null
-            if (-not $latestTag) { $latestTag = "v1.0.9" }
-            $versionMatch = [regex]::Match($latestTag, '\d+$')
-            if ($versionMatch.Success) {
-              $nextNum = [int]$versionMatch.Value + 1
-              $base = $latestTag.Substring(0, $versionMatch.Index)
-              $tag = "$base$nextNum"
-            } else {
-              $tag = "v1.0.${{ github.run_number }}"
-            }
-          }
-
-          $inputTitle = "${{ github.event.inputs.release_title }}".Trim()
-          if ($inputTitle) {
-            $title = $inputTitle
-          } else {
-            $title = "Online Subtitle Generator $tag"
-          }
-
-          Write-Host "Tag: $tag"
-          Write-Host "Title: $title"
-          "tag=$tag" >> $env:GITHUB_OUTPUT
-          "title=$title" >> $env:GITHUB_OUTPUT
+          python scripts/determine_release_info.py
 
       - name: Build Windows Executable & Bundle Dependencies
         env:
@@ -130,4 +109,3 @@ jobs:
           prerelease: ${{ github.event.inputs.prerelease || false }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
