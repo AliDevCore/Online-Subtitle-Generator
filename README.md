@@ -58,14 +58,15 @@ pytest
 # Launch application
 python app/main.py
 
-# Build portable Windows executable & bundle all dependencies + FFmpeg
+# Build portable Windows executable locally (optional)
 python packaging/build_windows.py --zip
-
-# Automated 1-Click Release Publishing (or double-click release.bat)
-python scripts/publish_release.py
 ```
 
-For complete release instructions, see the [Release Guide](docs/RELEASE_GUIDE.md).
+### Automated Releases & CI/CD
+
+Releases are built and published automatically via GitHub Actions:
+- Pushing to the `main` branch automatically triggers cloud compilation, test execution, dynamic tag increment, and publishes a new release.
+- For complete release instructions, see the [Release Guide](docs/RELEASE_GUIDE.md).
 
 ---
 
