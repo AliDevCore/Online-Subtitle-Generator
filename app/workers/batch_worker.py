@@ -57,12 +57,16 @@ class VideoBatchWorker(QThread):
         batch_service: BatchService,
         asr_provider: str = "cloudflare",
         asr_model: str = "@cf/openai/whisper-large-v3-turbo",
+        default_language: str = "en",
+        refine_subtitles: bool = True,
         parent=None
     ):
         super().__init__(parent)
         self.batch_service = batch_service
         self.asr_provider = asr_provider
         self.asr_model = asr_model
+        self.default_language = default_language or "en"
+        self.refine_subtitles = refine_subtitles
         self.is_cancelled = False
 
     def cancel(self):
@@ -89,6 +93,8 @@ class VideoBatchWorker(QThread):
             items = self.batch_service.run_video_batch(
                 asr_provider=self.asr_provider,
                 asr_model=self.asr_model,
+                default_language=self.default_language,
+                refine_subtitles=self.refine_subtitles,
                 item_callback=on_item,
                 cancel_token=self
             )

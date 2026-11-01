@@ -13,7 +13,8 @@ def get_asr_provider(
     provider_id: str = "cloudflare",
     model_id: str = "@cf/openai/whisper-large-v3-turbo",
     api_key: Optional[str] = None,
+    language: str = "en",
     **kwargs: Any
 ) -> BaseASRProvider:
     """Instantiate the Cloudflare ASR provider adapter with secure credentials."""
-    return CloudflareASRProvider(model_id=model_id, api_key=api_key, **kwargs)
+    return CloudflareASRProvider(model_id=model_id, api_key=api_key, language=language, **kwargs)

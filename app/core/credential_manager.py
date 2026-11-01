@@ -20,12 +20,14 @@ class CredentialManager:
     # In-memory cache to prevent repeated blocking OS keyring / DPAPI queries during logging
     _CREDENTIALS_CACHE: Dict[str, Optional[str]] = {}
     _ACCOUNTS_CACHE: Optional[List[Dict[str, Any]]] = None
+    _GEMINI_ACCOUNTS_CACHE: Optional[List[Dict[str, Any]]] = None
 
     @classmethod
     def invalidate_cache(cls):
         """Clear memory cache when credentials are updated."""
         cls._CREDENTIALS_CACHE.clear()
         cls._ACCOUNTS_CACHE = None
+        cls._GEMINI_ACCOUNTS_CACHE = None
 
     @staticmethod
     def _service_key(provider_id: str, field_name: str = "api_key") -> str:
@@ -139,6 +141,64 @@ class CredentialManager:
         return True
 
     @classmethod
+    def get_gemini_accounts(cls, max_accounts: int = 10) -> List[Dict[str, Any]]:
+        """
+        Retrieve all configured Google Gemini accounts (up to max_accounts).
+        Supports seamless cross-app discovery from OnlineSubtitleTranslator.
+        """
+        if cls._GEMINI_ACCOUNTS_CACHE is not None:
+            return cls._GEMINI_ACCOUNTS_CACHE
+
+        accounts = []
+        for idx in range(1, max_accounts + 1):
+            if idx == 1:
+                key = cls.get_credential("gemini", "api_key_1") or cls.get_credential("gemini", "api_key")
+                # Cross-project migration fallback to OnlineSubtitleTranslator
+                if not key:
+                    try:
+                        translator_key = keyring.get_password("OnlineSubtitleTranslator_gemini_account_1_api_key", "OnlineSubUser")
+                        if not translator_key:
+                            translator_key = keyring.get_password("OnlineSubtitleTranslator_gemini_api_key", "OnlineSubUser")
+                        if translator_key and len(translator_key.strip()) > 8:
+                            key = translator_key.strip()
+                            cls.set_gemini_account(1, key)
+                    except Exception:
+                        pass
+            else:
+                key = cls.get_credential("gemini", f"api_key_{idx}")
+
+            is_configured = bool(key and len(key.strip()) > 8)
+            accounts.append({
+                "index": idx,
+                "api_key": (key or "").strip(),
+                "configured": is_configured
+            })
+        cls._GEMINI_ACCOUNTS_CACHE = accounts
+        return accounts
+
+    @classmethod
+    def set_gemini_account(cls, index: int, api_key: str) -> bool:
+        """Save a specific Google Gemini account slot (1 to 10)."""
+        if index < 1 or index > 10:
+            return False
+
+        ok = cls.set_credential("gemini", api_key, f"api_key_{index}")
+        if index == 1:
+            cls.set_credential("gemini", api_key, "api_key")
+
+        cls.invalidate_cache()
+        return ok
+
+    @classmethod
+    def delete_gemini_account(cls, index: int) -> bool:
+        """Delete a specific Google Gemini account slot."""
+        cls.delete_credential("gemini", f"api_key_{index}")
+        if index == 1:
+            cls.delete_credential("gemini", "api_key")
+        cls.invalidate_cache()
+        return True
+
+    @classmethod
     def mask_key(cls, key: Optional[str]) -> str:
         """Return masked representation of a secret (e.g. 1234...XYZ or (Not configured))."""
         if not key or len(key.strip()) == 0:
@@ -164,6 +224,11 @@ class CredentialManager:
             for secret in (acct.get("api_key"), acct.get("account_id")):
                 if secret and len(secret) > 6:
                     sanitized = sanitized.replace(secret, "[REDACTED]")
+
+        for acct in cls.get_gemini_accounts():
+            secret = acct.get("api_key")
+            if secret and len(secret) > 6:
+                sanitized = sanitized.replace(secret, "[REDACTED]")
 
         import re
         sanitized = re.sub(r'(key=)[^&\s]+', r'\1[REDACTED]', sanitized, flags=re.IGNORECASE)

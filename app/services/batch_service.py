@@ -26,13 +26,15 @@ class BatchVideoItem:
         video_path: Path | str,
         start_min: float = 0.0,
         end_min: Optional[float] = None,
-        duration_seconds: float = 0.0
+        duration_seconds: float = 0.0,
+        language: str = "en"
     ):
         self.item_id = uuid.uuid4().hex[:8]
         self.video_path = Path(video_path)
         self.start_min = float(start_min)
         self.end_min = float(end_min) if end_min is not None else None
         self.duration_seconds = float(duration_seconds)
+        self.language = language or "en"
         self.status: JobStatus = JobStatus.PENDING
         self.error_msg: Optional[str] = None
         self.generated_en_srt: Optional[Path] = None
@@ -60,6 +62,7 @@ class BatchVideoItem:
             "start_min": self.start_min,
             "end_min": self.end_min,
             "duration_seconds": self.duration_seconds,
+            "language": self.language,
             "status": self.status.value,
             "error_msg": self.error_msg,
             "generated_en_srt": str(self.generated_en_srt) if self.generated_en_srt else None,
@@ -92,7 +95,8 @@ class BatchService:
         self,
         video_path: Path | str,
         start_min: float = 0.0,
-        end_min: Optional[float] = None
+        end_min: Optional[float] = None,
+        language: str = "en"
     ) -> BatchVideoItem:
         path = Path(video_path)
         dur = 0.0
@@ -106,7 +110,8 @@ class BatchService:
             video_path=path,
             start_min=start_min,
             end_min=end_min,
-            duration_seconds=dur
+            duration_seconds=dur,
+            language=language
         )
         self.video_queue.append(item)
         return item
@@ -116,7 +121,8 @@ class BatchService:
     def scan_and_add_videos(
         self,
         folder_path: Path | str,
-        recursive: bool = False
+        recursive: bool = False,
+        language: str = "en"
     ) -> List[BatchVideoItem]:
         folder = Path(folder_path)
         if not folder.exists() or not folder.is_dir():
@@ -128,7 +134,7 @@ class BatchService:
             if p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS:
                 if any(it.video_path.resolve() == p.resolve() for it in self.video_queue):
                     continue
-                item = self.add_video_file(p)
+                item = self.add_video_file(p, language=language)
                 found_items.append(item)
 
         return found_items
@@ -139,6 +145,8 @@ class BatchService:
         self,
         asr_provider: str = "cloudflare",
         asr_model: str = "@cf/openai/whisper-large-v3-turbo",
+        default_language: str = "en",
+        refine_subtitles: bool = True,
         item_callback: Optional[Callable[[BatchVideoItem, int, int], None]] = None,
         cancel_token: Optional[Any] = None,
         **kwargs: Any
@@ -173,12 +181,15 @@ class BatchService:
                     end_seconds=end_sec
                 )
 
+                item_lang = getattr(item, "language", default_language) or default_language
                 item.status = JobStatus.TRANSCRIBING
                 en_srt = self.asr.run_transcription(
                     video_path=item.video_path,
                     time_range=time_range,
                     provider_id=asr_provider,
                     model_id=asr_model,
+                    language=item_lang,
+                    refine_subtitles=refine_subtitles,
                     cancel_token=cancel_token
                 )
                 item.generated_en_srt = en_srt

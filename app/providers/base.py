@@ -23,6 +23,7 @@ class BaseASRProvider(ABC):
         audio_path: Path,
         start_offset_seconds: float,
         duration_seconds: float,
+        language: str = "en",
         cancel_token: Optional[Any] = None
     ) -> SubtitleFile:
         """

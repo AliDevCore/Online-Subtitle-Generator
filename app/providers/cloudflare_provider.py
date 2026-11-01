@@ -23,6 +23,19 @@ logger = logging.getLogger("OnlineSubtitleGenerator.Cloudflare")
 
 CLOUDFLARE_API_BASE = "https://api.cloudflare.com/client/v4/accounts"
 
+# Language-specific priming prompts for Whisper to encourage clean punctuation and spelling
+LANGUAGE_PROMPTS: Dict[str, str] = {
+    "en": "Hello, welcome. Please transcribe with clear punctuation, commas, periods, question marks, and dialogue.",
+    "fa": "سلام. لطفاً گفتار را با رعایت دقیق علائم نگارشی، نقطه‌گذاری و املای صحیح کلمات بنویسید.",
+    "ar": "مرحبا. يرجى كتابة النص المنطوق بدقة مع علامات الترقيم الصحيحة.",
+    "tr": "Merhaba. Lütfen noktalama işaretlerine dikkat ederek doğru bir şekilde yazıya geçirin.",
+    "fr": "Bonjour. Veuillez transcrire avec une ponctuation claire, des virgules et des points.",
+    "de": "Hallo. Bitte mit korrekter Zeichensetzung und Rechtschreibung transkribieren.",
+    "es": "Hola. Por favor, transcribe con puntuación clara, comas y puntos.",
+    "it": "Ciao. Si prega di trascrivere con punteggiatura chiara, virgole e punti.",
+    "ru": "Здравствуйте. Пожалуйста, транскрибируйте с четкой пунктуацией и знаками препиناния.",
+}
+
 # Module-level sticky account index and cooldown tracking across chunks and files
 _EXHAUSTED_UNTIL: Dict[int, float] = {}
 _INVALID_ACCOUNTS: set[int] = set()
@@ -86,8 +99,9 @@ def _parse_cloudflare_vtt(vtt_text: str) -> List[SubtitleCue]:
 class CloudflareASRProvider(BaseASRProvider):
     """ASR using Cloudflare Workers AI Whisper with multi-account pool."""
 
-    def __init__(self, model_id: str = "@cf/openai/whisper-large-v3-turbo", api_key: Optional[str] = None, **kwargs: Any):
+    def __init__(self, model_id: str = "@cf/openai/whisper-large-v3-turbo", api_key: Optional[str] = None, language: str = "en", **kwargs: Any):
         super().__init__(model_id, api_key, **kwargs)
+        self.language = language or "en"
         self.account_id = kwargs.get("account_id") or CredentialManager.get_credential("cloudflare", "account_id")
 
     def get_info(self) -> ProviderInfo:
@@ -121,6 +135,7 @@ class CloudflareASRProvider(BaseASRProvider):
     def _execute_transcribe_with_account_pool(
         self,
         audio_bytes: bytes,
+        language: Optional[str] = None,
         cancel_token: Optional[Any] = None
     ) -> Dict[str, Any]:
         """
@@ -133,6 +148,8 @@ class CloudflareASRProvider(BaseASRProvider):
         - Max wait cycle ceiling to prevent indefinite hangs.
         """
         global _ACTIVE_ACCOUNT_INDEX, _EXHAUSTED_UNTIL, _INVALID_ACCOUNTS
+
+        target_lang = (language or self.language or "en").strip().lower()
 
         all_accounts = [a for a in CredentialManager.get_cloudflare_accounts() if a.get("configured")]
         if not all_accounts and self.account_id and self.api_key:
@@ -172,19 +189,22 @@ class CloudflareASRProvider(BaseASRProvider):
                 url = f"{CLOUDFLARE_API_BASE}/{acct_id}/ai/run/{self.model_id}"
                 is_turbo = "whisper-large-v3-turbo" in self.model_id.lower()
 
-                logger.info(f"Sending audio ({len(audio_bytes) / 1024:.1f} KB) to Cloudflare (Account #{idx}) [{self.model_id}]...")
+                lang_str = f" [lang={target_lang}]" if target_lang != "auto" else " [auto-detect]"
+                logger.info(f"Sending audio ({len(audio_bytes) / 1024:.1f} KB) to Cloudflare (Account #{idx}) [{self.model_id}]{lang_str}...")
 
                 try:
                     if is_turbo:
                         import base64
                         b64_audio = base64.b64encode(audio_bytes).decode("ascii")
-                        payload = {
+                        payload: Dict[str, Any] = {
                             "audio": b64_audio,
-                            "language": "en",
-                            "initial_prompt": "Hello, welcome. Please transcribe with clear punctuation, commas, periods, question marks, and dialogue.",
                             "vad_filter": False,
                             "condition_on_previous_text": False
                         }
+                        if target_lang != "auto":
+                            payload["language"] = target_lang
+                            if target_lang in LANGUAGE_PROMPTS:
+                                payload["initial_prompt"] = LANGUAGE_PROMPTS[target_lang]
                         headers = {
                             "Authorization": f"Bearer {token}",
                             "Content-Type": "application/json"
@@ -304,6 +324,7 @@ class CloudflareASRProvider(BaseASRProvider):
         audio_path: Path,
         start_offset_seconds: float,
         duration_seconds: float,
+        language: Optional[str] = None,
         cancel_token: Optional[Any] = None
     ) -> SubtitleFile:
         valid, msg = self.validate_credentials()
@@ -313,8 +334,9 @@ class CloudflareASRProvider(BaseASRProvider):
         if not audio_path.exists():
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
+        target_lang = (language or self.language or "en").strip().lower()
         audio_bytes = audio_path.read_bytes()
-        result = self._execute_transcribe_with_account_pool(audio_bytes, cancel_token=cancel_token)
+        result = self._execute_transcribe_with_account_pool(audio_bytes, language=target_lang, cancel_token=cancel_token)
 
         # 1. High-precision word-level sentence and pause-aware segmentation
         words = result.get("words", [])
@@ -358,7 +380,7 @@ class CloudflareASRProvider(BaseASRProvider):
 
         # Shift timestamps by start_offset_seconds
         offset_ms = int(start_offset_seconds * 1000)
-        sub_file = SubtitleFile(cues=cues, language="en")
+        sub_file = SubtitleFile(cues=cues, language=target_lang if target_lang != "auto" else "auto")
         if offset_ms > 0:
             sub_file = sub_file.shift_all(offset_ms)
 

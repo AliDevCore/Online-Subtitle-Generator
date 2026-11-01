@@ -10,12 +10,13 @@ from typing import List, Optional
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget,
     QTableWidgetItem, QFileDialog, QHeaderView, QMessageBox, QLabel,
-    QCheckBox, QWidget, QProgressBar, QFrame, QSpinBox, QPlainTextEdit
+    QCheckBox, QWidget, QProgressBar, QFrame, QSpinBox, QPlainTextEdit,
+    QComboBox
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QTextCursor
 
-from app.core.config import get_app_icon
+from app.core.config import get_app_icon, SUPPORTED_LANGUAGES, get_language_display
 from app.services.batch_service import BatchService, BatchVideoItem, VIDEO_EXTENSIONS
 from app.workers.batch_worker import VideoBatchWorker
 
@@ -138,10 +139,38 @@ class BatchDialog(QDialog):
         top_bar.addStretch()
         root_layout.addLayout(top_bar)
 
-        # Video Table
-        self.table_videos = QTableWidget(0, 6)
+        # Default Language Bar
+        lang_bar = QHBoxLayout()
+        lbl_lang = QLabel("<b>🌐 Default Video Language:</b>")
+        lbl_lang.setStyleSheet("font-size: 12px; color: #f1f5f9;")
+        lang_bar.addWidget(lbl_lang)
+
+        self.combo_batch_lang = QComboBox()
+        self.combo_batch_lang.setMinimumHeight(32)
+        for lang in SUPPORTED_LANGUAGES:
+            self.combo_batch_lang.addItem(lang["display"], lang["code"])
+        idx_en = self.combo_batch_lang.findData("en")
+        if idx_en >= 0:
+            self.combo_batch_lang.setCurrentIndex(idx_en)
+        lang_bar.addWidget(self.combo_batch_lang, 1)
+
+        self.btn_apply_lang_all = QPushButton("Apply Language to All Videos")
+        self.btn_apply_lang_all.setObjectName("btn_secondary")
+        self.btn_apply_lang_all.setMinimumHeight(32)
+        self.btn_apply_lang_all.clicked.connect(self._apply_lang_to_all)
+        lang_bar.addWidget(self.btn_apply_lang_all)
+
+        self.chk_batch_ai_refine = QCheckBox("✨ AI Spell & Grammar Fix (Gemini / Gemma)")
+        self.chk_batch_ai_refine.setChecked(True)
+        self.chk_batch_ai_refine.setStyleSheet("color: #38bdf8; font-size: 11.5px; font-weight: 500;")
+        lang_bar.addWidget(self.chk_batch_ai_refine)
+
+        root_layout.addLayout(lang_bar)
+
+        # Video Table (7 columns)
+        self.table_videos = QTableWidget(0, 7)
         self.table_videos.setHorizontalHeaderLabels([
-            "Video File", "Duration", "Start (Min)", "End (Min)", "Status", "Output Subtitle (.srt)"
+            "Video File", "Duration", "Language", "Start (Min)", "End (Min)", "Status", "Output Subtitle (.srt)"
         ])
         self.table_videos.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
         self.table_videos.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
@@ -149,6 +178,7 @@ class BatchDialog(QDialog):
         self.table_videos.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
         self.table_videos.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
         self.table_videos.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        self.table_videos.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeToContents)
         self.table_videos.itemChanged.connect(self._on_video_cell_changed)
         root_layout.addWidget(self.table_videos)
 
@@ -219,6 +249,12 @@ class BatchDialog(QDialog):
 
         root_layout.addLayout(bottom_box)
 
+    def _apply_lang_to_all(self):
+        selected_lang = self.combo_batch_lang.currentData() or "en"
+        for item in self.batch_service.video_queue:
+            item.language = selected_lang
+        self._refresh_video_table()
+
     def _refresh_video_table(self):
         self._updating_table = True
         self.table_videos.setRowCount(0)
@@ -237,27 +273,44 @@ class BatchDialog(QDialog):
             d_item.setFlags(d_item.flags() & ~Qt.ItemIsEditable)
             self.table_videos.setItem(row, 1, d_item)
 
-            # 2: Start Min (editable, integer)
+            # 2: Language dropdown per row
+            lang_combo = QComboBox()
+            lang_combo.setStyleSheet("font-size: 11.5px;")
+            for lang in SUPPORTED_LANGUAGES:
+                lang_combo.addItem(lang["display"], lang["code"])
+            idx_lang = lang_combo.findData(getattr(item, "language", "en"))
+            if idx_lang >= 0:
+                lang_combo.setCurrentIndex(idx_lang)
+
+            def make_handler(target_item=item, target_combo=lang_combo):
+                def on_lang_changed():
+                    target_item.language = target_combo.currentData() or "en"
+                return on_lang_changed
+
+            lang_combo.currentIndexChanged.connect(make_handler(item, lang_combo))
+            self.table_videos.setCellWidget(row, 2, lang_combo)
+
+            # 3: Start Min (editable, integer)
             st_val = f"{int(round(item.start_min))}"
             st_item = QTableWidgetItem(st_val)
-            self.table_videos.setItem(row, 2, st_item)
+            self.table_videos.setItem(row, 3, st_item)
 
-            # 3: End Min (editable, integer)
+            # 4: End Min (editable, integer)
             end_val = f"{int(round(item.end_min))}" if (item.end_min and item.end_min > 0) else "End"
             end_item = QTableWidgetItem(end_val)
-            self.table_videos.setItem(row, 3, end_item)
+            self.table_videos.setItem(row, 4, end_item)
 
-            # 4: Status
+            # 5: Status
             s_item = QTableWidgetItem(item.status.value)
             s_item.setFlags(s_item.flags() & ~Qt.ItemIsEditable)
             self._color_status_item(s_item, item.status.value)
-            self.table_videos.setItem(row, 4, s_item)
+            self.table_videos.setItem(row, 5, s_item)
 
-            # 5: Output SRT
+            # 6: Output SRT
             out_name = item.generated_en_srt.name if item.generated_en_srt else "-"
             out_item = QTableWidgetItem(out_name)
             out_item.setFlags(out_item.flags() & ~Qt.ItemIsEditable)
-            self.table_videos.setItem(row, 5, out_item)
+            self.table_videos.setItem(row, 6, out_item)
 
         cnt = len(self.batch_service.video_queue)
         self.lbl_video_count.setText(f"{cnt} video(s) in queue")
@@ -285,11 +338,11 @@ class BatchDialog(QDialog):
 
         batch_item = self.batch_service.video_queue[row]
         try:
-            if col == 2:  # Start min
+            if col == 3:  # Start min
                 val = max(0.0, float(int(round(float(item.text().strip())))))
                 batch_item.start_min = val
                 item.setText(f"{int(val)}")
-            elif col == 3:  # End min
+            elif col == 4:  # End min
                 txt = item.text().strip().lower()
                 if txt in ("end", "full", "0", ""):
                     batch_item.end_min = None
@@ -305,7 +358,8 @@ class BatchDialog(QDialog):
         folder = QFileDialog.getExistingDirectory(self, "Select Folder Containing Videos")
         if not folder:
             return
-        found = self.batch_service.scan_and_add_videos(folder)
+        selected_lang = self.combo_batch_lang.currentData() or "en"
+        found = self.batch_service.scan_and_add_videos(folder, language=selected_lang)
         self._refresh_video_table()
         if found:
             # Prompt user to ask if they want to configure time ranges
@@ -329,8 +383,9 @@ class BatchDialog(QDialog):
         )
         if not files:
             return
+        selected_lang = self.combo_batch_lang.currentData() or "en"
         for f in files:
-            self.batch_service.add_video_file(f)
+            self.batch_service.add_video_file(f, language=selected_lang)
         self._refresh_video_table()
 
     def _set_range_for_all(self):
@@ -369,10 +424,13 @@ class BatchDialog(QDialog):
         self._current_processing_name = None
         self.txt_file_log.clear()
 
+        selected_lang = self.combo_batch_lang.currentData() or "en"
         self.active_video_worker = VideoBatchWorker(
             batch_service=self.batch_service,
             asr_provider="cloudflare",
             asr_model="@cf/openai/whisper-large-v3-turbo",
+            default_language=selected_lang,
+            refine_subtitles=self.chk_batch_ai_refine.isChecked(),
             parent=self
         )
         self.active_video_worker.item_updated.connect(self._on_video_item_update)
@@ -454,6 +512,9 @@ class BatchDialog(QDialog):
         self.btn_set_range.setEnabled(not busy)
         self.btn_remove_video.setEnabled(not busy)
         self.btn_clear_videos.setEnabled(not busy)
+        self.combo_batch_lang.setEnabled(not busy)
+        self.btn_apply_lang_all.setEnabled(not busy)
+        self.chk_batch_ai_refine.setEnabled(not busy)
         self.btn_start_video.setEnabled(not busy)
         self.btn_cancel_video.setEnabled(busy)
 

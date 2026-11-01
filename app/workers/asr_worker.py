@@ -33,6 +33,8 @@ class ASRWorker(QThread):
         time_range: TimeRange,
         provider_id: str = "cloudflare",
         model_id: str = "@cf/openai/whisper-large-v3-turbo",
+        language: str = "en",
+        refine_subtitles: bool = True,
         output_path: Optional[Path | str] = None,
         output_srt_path: Optional[Path | str] = None,
         parent=None
@@ -43,6 +45,8 @@ class ASRWorker(QThread):
         self.time_range = time_range
         self.provider_id = provider_id
         self.model_id = model_id
+        self.language = language or "en"
+        self.refine_subtitles = refine_subtitles
         self.output_srt_path = output_path or output_srt_path
         self.is_cancelled = False
 
@@ -70,6 +74,8 @@ class ASRWorker(QThread):
                 time_range=self.time_range,
                 provider_id=self.provider_id,
                 model_id=self.model_id,
+                language=self.language,
+                refine_subtitles=self.refine_subtitles,
                 output_srt_path=self.output_srt_path,
                 progress_callback=on_progress,
                 cancel_token=self

@@ -15,7 +15,7 @@ from typing import Optional
 
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QLabel, QPushButton, QLineEdit, QSpinBox,
+    QLabel, QPushButton, QLineEdit, QSpinBox, QComboBox, QCheckBox,
     QProgressBar, QFileDialog, QMessageBox, QGroupBox, QStatusBar,
     QFrame, QScrollArea, QSizePolicy
 )
@@ -23,7 +23,7 @@ from PySide6.QtCore import Qt, QTimer
 
 from app.core.config import (
     APP_NAME, APP_VERSION, SETTINGS_FILE, DEFAULT_PERFORMANCE_SETTINGS,
-    VERIFIED_ASR_PROVIDERS, load_chunking_settings, get_app_icon
+    VERIFIED_ASR_PROVIDERS, SUPPORTED_LANGUAGES, load_chunking_settings, get_app_icon
 )
 from app.core.credential_manager import CredentialManager
 from app.core.database import Database
@@ -153,8 +153,24 @@ class MainWindow(QMainWindow):
         self.lbl_media_info.setStyleSheet("color: #94a3b8; font-size: 11.5px;")
         asr_layout.addWidget(self.lbl_media_info)
 
+        # Video Audio Language Selection
+        asr_layout.addWidget(QLabel("<b>2. Audio / Video Language:</b>"))
+        self.combo_language = QComboBox()
+        self.combo_language.setMinimumHeight(36)
+        for lang in SUPPORTED_LANGUAGES:
+            self.combo_language.addItem(lang["display"], lang["code"])
+        idx_en = self.combo_language.findData("en")
+        if idx_en >= 0:
+            self.combo_language.setCurrentIndex(idx_en)
+        asr_layout.addWidget(self.combo_language)
+
+        self.chk_ai_refinement = QCheckBox("✨ AI Subtitle Refiner & Proofreader (Google Gemini / Gemma)")
+        self.chk_ai_refinement.setChecked(True)
+        self.chk_ai_refinement.setStyleSheet("color: #38bdf8; font-size: 11.5px; font-weight: 500;")
+        asr_layout.addWidget(self.chk_ai_refinement)
+
         # Time Range Selection (Integer Minutes)
-        asr_layout.addWidget(QLabel("<b>2. Time Range Selection (in Minutes):</b>"))
+        asr_layout.addWidget(QLabel("<b>3. Time Range Selection (in Minutes):</b>"))
         t_grid = QGridLayout()
         t_grid.setSpacing(10)
 
@@ -194,7 +210,7 @@ class MainWindow(QMainWindow):
         asr_layout.addWidget(self.lbl_range_info)
 
         # Engine & Multi-Account Details
-        asr_layout.addWidget(QLabel("<b>3. ASR Engine & Account Pool:</b>"))
+        asr_layout.addWidget(QLabel("<b>4. ASR Engine & Account Pool:</b>"))
         self.lbl_asr_engine = QLabel("Cloudflare Workers AI — OpenAI Whisper Large v3 Turbo (@cf/openai/whisper-large-v3-turbo)")
         self.lbl_asr_engine.setStyleSheet("color: #f1f5f9; font-weight: 600; font-size: 12px;")
         asr_layout.addWidget(self.lbl_asr_engine)
@@ -304,6 +320,11 @@ class MainWindow(QMainWindow):
             mode_str = f"Chunking: {mins_str}m segments (Silence-aware reconciliation)"
         self.lbl_asr_limits.setText(f"Limits: {info.free_tier_desc} | Mode: {mode_str}")
 
+        from app.services.subtitle_refiner_service import SubtitleRefinerService
+        refiner = SubtitleRefinerService()
+        eng_name = refiner.get_active_engine_name()
+        self.chk_ai_refinement.setText(f"✨ AI Subtitle Refiner & Proofreader ({eng_name})")
+
     def _browse_video(self):
         file_path, _ = QFileDialog.getOpenFileName(
             self,
@@ -371,7 +392,8 @@ class MainWindow(QMainWindow):
             else:
                 time_range = TimeRange.from_minutes(float(st_min), float(end_min))
 
-            out_srt = self.asr_service.get_default_output_path(video_path, ".en.srt", time_range)
+            selected_lang = self.combo_language.currentData() or "en"
+            out_srt = self.asr_service.get_default_output_path(video_path, time_range=time_range, language=selected_lang)
 
             self._set_ui_busy(True)
             self.rate_limit_frame.hide()
@@ -385,6 +407,8 @@ class MainWindow(QMainWindow):
                 time_range=time_range,
                 provider_id="cloudflare",
                 model_id="@cf/openai/whisper-large-v3-turbo",
+                language=selected_lang,
+                refine_subtitles=self.chk_ai_refinement.isChecked(),
                 output_path=out_srt
             )
             self.active_worker.progress.connect(self._on_progress_update)
@@ -427,7 +451,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(100)
         self.lbl_stage.setText("Subtitles generated successfully!")
         self.statusBar.showMessage(f"Generated: {p.name}")
-        QMessageBox.information(self, "Success", f"English subtitle generated successfully:\n{p.name}")
+        QMessageBox.information(self, "Success", f"Subtitle generated successfully:\n{p.name}")
 
     def _on_asr_failed(self, message: str):
         self._set_ui_busy(False)
@@ -455,6 +479,8 @@ class MainWindow(QMainWindow):
         self.btn_batch_videos.setEnabled(not busy)
         self.btn_generate_en.setEnabled(not busy)
         self.btn_full_video.setEnabled(not busy)
+        self.combo_language.setEnabled(not busy)
+        self.chk_ai_refinement.setEnabled(not busy)
         self.spin_start.setEnabled(not busy)
         self.spin_end.setEnabled(not busy)
         self.btn_keys.setEnabled(not busy)

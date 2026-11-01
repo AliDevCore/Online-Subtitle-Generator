@@ -12,7 +12,7 @@ from app.core.types import ProviderInfo, PerformanceSettings, ChunkingSettings
 
 
 APP_NAME = "Online Subtitle Generator"
-APP_VERSION = "1.0.10"
+APP_VERSION = "1.0.11"
 APP_AUTHOR = "OnlineSub"
 
 # Determine base paths and portable mode
@@ -78,6 +78,34 @@ DEFAULT_CHUNKING_SETTINGS = ChunkingSettings(
     enabled=True,
     cloudflare_minutes=5.0,
 )
+
+# Supported ASR languages with Whisper ISO-639-1 language codes
+SUPPORTED_LANGUAGES: List[Dict[str, str]] = [
+    {"code": "en", "name": "English", "display": "English"},
+    {"code": "fa", "name": "Persian", "display": "Persian (Farsi)"},
+    {"code": "ar", "name": "Arabic", "display": "Arabic"},
+    {"code": "tr", "name": "Turkish", "display": "Turkish"},
+    {"code": "fr", "name": "French", "display": "French"},
+    {"code": "de", "name": "German", "display": "German"},
+    {"code": "es", "name": "Spanish", "display": "Spanish"},
+    {"code": "it", "name": "Italian", "display": "Italian"},
+    {"code": "ru", "name": "Russian", "display": "Russian"},
+    {"code": "zh", "name": "Chinese", "display": "Chinese"},
+    {"code": "ja", "name": "Japanese", "display": "Japanese"},
+    {"code": "ko", "name": "Korean", "display": "Korean"},
+    {"code": "hi", "name": "Hindi", "display": "Hindi"},
+    {"code": "pt", "name": "Portuguese", "display": "Portuguese"},
+    {"code": "auto", "name": "Auto Detect", "display": "Auto Detect"},
+]
+
+
+def get_language_display(code: str) -> str:
+    """Return user-friendly display name for a language code."""
+    for lang in SUPPORTED_LANGUAGES:
+        if lang["code"] == code:
+            return lang["display"]
+    return code.upper()
+
 
 
 def get_app_icon():

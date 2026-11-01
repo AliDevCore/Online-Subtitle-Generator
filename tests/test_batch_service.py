@@ -56,3 +56,22 @@ def test_batch_video_folder_scan(tmp_path):
     names = [it.name for it in items]
     assert "ep01.mp4" in names
     assert "ep02.mkv" in names
+
+
+def test_batch_service_language_support(tmp_path):
+    mock_asr = MagicMock()
+    mock_asr.ffmpeg.probe_media.return_value = {"duration_seconds": 60.0}
+    mock_asr.run_transcription.return_value = tmp_path / "vid1.fa.srt"
+
+    vid = tmp_path / "vid1.mp4"
+    vid.write_bytes(b"dummy")
+
+    service = BatchService(asr_service=mock_asr)
+    item = service.add_video_file(vid, language="fa")
+    assert item.language == "fa"
+
+    results = service.run_video_batch(default_language="fa")
+    assert results[0].status == JobStatus.COMPLETED
+    mock_asr.run_transcription.assert_called_once()
+    assert mock_asr.run_transcription.call_args.kwargs["language"] == "fa"
+

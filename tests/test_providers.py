@@ -7,7 +7,14 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from app.core.types import SubtitleFile, SubtitleCue
-from app.providers.cloudflare_provider import CloudflareASRProvider, _parse_vtt_timestamp
+from app.providers.cloudflare_provider import (
+    CloudflareASRProvider, _parse_vtt_timestamp, _EXHAUSTED_UNTIL, _INVALID_ACCOUNTS
+)
+
+
+def setup_function():
+    _EXHAUSTED_UNTIL.clear()
+    _INVALID_ACCOUNTS.clear()
 
 
 def test_cloudflare_credential_validation():
@@ -58,3 +65,40 @@ def test_cloudflare_multi_account_failover_on_429(mock_post, tmp_path):
         assert sub.cues[0].text == "Hello world."
         # Verify 2 calls were made (Account 1, then Account 2)
         assert mock_post.call_count == 2
+
+
+@patch("requests.post")
+def test_cloudflare_language_payload(mock_post, tmp_path):
+    mock_audio = tmp_path / "test_lang.mp3"
+    mock_audio.write_bytes(b"DUMMYAUDIOBYTES")
+
+    resp_200 = MagicMock()
+    resp_200.status_code = 200
+    resp_200.json.return_value = {
+        "success": True,
+        "result": {
+            "text": "سلام دنیا"
+        }
+    }
+    mock_post.return_value = resp_200
+
+    accounts = [{"index": 1, "account_id": "acct1_1234567890", "api_key": "tok1_1234567890", "configured": True}]
+
+    with patch("app.core.credential_manager.CredentialManager.get_cloudflare_accounts", return_value=accounts):
+        # 1. Test Persian ('fa')
+        provider = CloudflareASRProvider(language="fa")
+        sub = provider.transcribe(mock_audio, start_offset_seconds=0.0, duration_seconds=1.0)
+        assert sub.language == "fa"
+        call_kwargs = mock_post.call_args.kwargs
+        payload = call_kwargs["json"]
+        assert payload["language"] == "fa"
+        assert "سلام" in payload.get("initial_prompt", "")
+
+        # 2. Test Auto Detect ('auto') - should omit 'language' so Whisper auto-detects
+        provider_auto = CloudflareASRProvider(language="auto")
+        sub_auto = provider_auto.transcribe(mock_audio, start_offset_seconds=0.0, duration_seconds=1.0)
+        assert sub_auto.language == "auto"
+        call_kwargs_auto = mock_post.call_args.kwargs
+        payload_auto = call_kwargs_auto["json"]
+        assert "language" not in payload_auto
+

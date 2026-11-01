@@ -1,75 +1,165 @@
 # Online Subtitle Generator
 
-**Online Subtitle Generator** is a high-performance Windows desktop application that extracts natural, grammatically aligned English subtitles (`.srt`) from video and audio files using **Cloudflare Workers AI Whisper Large v3 Turbo** (`@cf/openai/whisper-large-v3-turbo`).
+<p align="center">
+  <img src="assets/app_icon.png" alt="Online Subtitle Generator Icon" width="128" height="128">
+</p>
 
-Equipped with a **Multi-Account Failover Pool** (supporting up to 10 Cloudflare accounts) and an intelligent subtitle segmenter, it is designed for continuous, resilient, overnight batch processing without interruptions.
+<p align="center">
+  <strong>Next-Generation Multilingual Subtitle Studio powered by Cloudflare Workers AI Whisper, Google Gemini Flash & Gemma 4 26B</strong>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Release-v1.0.11-blue.svg" alt="Release Version">
+  <img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D6.svg?logo=windows" alt="Platform">
+  <img src="https://img.shields.io/badge/Python-3.11%20%7C%203.14-3776AB.svg?logo=python" alt="Python">
+  <img src="https://img.shields.io/badge/ASR-Whisper%20Large%20v3%20Turbo-F38020.svg?logo=cloudflare" alt="ASR Engine">
+  <img src="https://img.shields.io/badge/AI%20Refinement-Google%20Gemini%20Flash%20%7C%20Gemma%204-4285F4.svg?logo=google" alt="AI Refinement">
+  <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License">
+</p>
+
+---
+
+## Overview
+
+**Online Subtitle Generator** is a high-performance Windows desktop application designed to generate broadcast-quality, grammatically perfect subtitles (`.srt`) directly from local video and audio files. 
+
+Unlike conventional speech recognition tools that produce raw, error-prone text with frequent spelling mistakes and awkward sentence splits, **Online Subtitle Generator** introduces a state-of-the-art **Two-Stage Dual-Engine AI Pipeline**:
+
+1. **Acoustic Speech Recognition:** **OpenAI Whisper Large v3 Turbo** (`@cf/openai/whisper-large-v3-turbo`) on Cloudflare Workers AI decodes audio frames with millisecond-accurate timestamping.
+2. **Intelligent Linguistic Refinement:** **Google Gemini Flash Multi-Model Rotation Pool** (`gemini-3.5-flash-lite`, `gemini-3-flash`, `gemini-3.8-flash`) and **Google Gemma 4 26B MoE** review the transcribed cues, correcting homophones, spelling typos, grammatical slips, and language-specific orthography (such as Persian *half-spaces / نیم‌فاصله*) while **mathematically preserving** every single cue's start and end timestamps.
+
+Supported by a **Multi-Account Failover Pool** of up to 10 Cloudflare accounts and up to 10 Google Gemini accounts, the application effortlessly handles overnight batch workflows at enterprise speed with **zero monthly subscription costs**.
+
+---
+
+## Architecture: The Two-Stage AI Pipeline
+
+```mermaid
+graph LR
+    A["🎬 Video / Audio Input"] --> B["⚙️ FFmpeg Audio Extraction<br/>(16kHz Mono Stream)"]
+    B --> C["🤖 Stage 1: Cloudflare Whisper Large v3 Turbo<br/>Acoustic Decoding & Millisecond Timestamping"]
+    C --> D["📐 Pause-Aware Segmenter<br/>Sentence boundaries, dialogue hyphens, orphan prevention"]
+    D --> E["✨ Stage 2: Google Gemini Flash / Gemma 4 MoE<br/>AI Spell-Check, Homophone Resolution & Grammar Refinement"]
+    E --> F["📄 Flawless .srt Subtitle File<br/>Strict timestamp preservation & pristine orthography"]
+```
 
 ---
 
 ## Key Features
 
-- **Cloudflare Workers AI Whisper Large v3 Turbo:** State-of-the-art speech recognition with native Voice Activity Detection (`vad_filter`) and anti-hallucination controls powered by Cloudflare's serverless AI infrastructure.
-- **Multi-Account Failover Pool (Up to 10 Accounts):**
-  - Configure up to 10 separate Cloudflare accounts (Account ID & API Token).
-  - When Account #1 exhausts its daily free quota (10,000 Neurons), processing automatically switches to Account #2, #3, and beyond without halting your batch.
-- **Intelligent Subtitle Segmentation & Formatting:**
-  - **Grammar-Aware Splitting:** Avoids breaking sentences after prepositions, articles, or pronouns.
-  - **Orphan Word Prevention:** Ensures short trailing words (e.g., `Yet.`, `Marriage?`) remain unified with their parent sentence.
-  - **Speech Pause Detection:** Silence gaps $\ge 0.40$s accurately identify speaker turns.
-  - **Dialogue Turn Formatting:** Fast exchanges are formatted with broadcast-standard hyphens (`- Speaker 1\n- Speaker 2`).
-  - **Collision-Free Timestamps:** Eliminates overlapping cues and guarantees sequential display.
-- **Batch Processing Manager:**
-  - Queue multiple video files from a folder.
-  - Configure custom start/end time ranges per video or process full movies.
-  - Failure isolation: if one video encounters an issue, processing seamlessly continues to the next.
-- **Hardware-Optimized & Portable:**
-  - Bundled with static FFmpeg and FFprobe binaries.
-  - Zero cloud plaintext credential storage (encrypted via Windows Credential Manager).
-  - Portable mode supported.
+### 🎙️ 1. Dual-Engine AI Subtitle Architecture
+* **Whisper Large v3 Turbo (`@cf/openai/whisper-large-v3-turbo`):**
+  * The fastest, most accurate flagship speech recognition model from OpenAI, deployed on Cloudflare's serverless edge infrastructure.
+  * Native Voice Activity Detection (VAD) and automated silence truncation eliminate audio hallucination loops.
+* **Google Gemini Flash & Gemma 4 AI Refinement:**
+  * **Google Gemini Flash Multi-Model Pool (Recommended):** High-speed, ultra-accurate proofreading powered by Google's native Gemini models (`gemini-3.5-flash-lite`, `gemini-3-flash-preview`, `gemini-3.8-flash`). Automatically handles spikes in traffic and rate limits by rotating across models.
+  * **Intelligent Homophone Disambiguation:** Distinguishes sound-alike words using sentence semantics (e.g. Persian `گذار/گزار`, `حیات/حیاط`, `ص/س/ث`, `ز/ض/ظ/ذ`, `تصویر/تصفیر`, `هاله/خاله`, or English `their/there/they're`, `its/it's`).
+  * **Orthography & Half-Spaces:** Automatically applies correct typography (e.g., Persian *nim-faseleh* `می‌شود` and compound nouns) without robotic formalization.
+  * **Zero-Drift Guarantee:** The LLM refines strictly line-by-line using index anchors. Timestamps, cue counts, and sync remain 100% untouched.
 
 ---
 
-## Installation & Setup
+### 🌐 2. Rich Multilingual Support with Direct Language Priming
+Whisper is no longer forced to guess the spoken language. Users can directly select the target language from the interface, optimizing the acoustic decoder and applying custom linguistic rules:
 
-1. **Pre-built Portable Executable (Recommended):**
-   - Download the latest portable release archive (`Online-Subtitle-Generator-v*.zip`) from the [Releases](https://github.com/AliDevCore/Online-Subtitle-Generator/releases) page.
-   - Extract the `.zip` archive to any directory of your choice.
-   - Run `Online Subtitle Generator.exe`.
-2. **API Credentials:**
-   - Click **🔑 Cloudflare Accounts (Pool)** on the top bar.
-   - Enter your Cloudflare **Account ID** and **API Token** for Slot #1, #2, etc.
-   - Click **Save Account**.
+| Supported Language | Language Code | Specialized AI Refinement Capabilities |
+| :--- | :---: | :--- |
+| **English** | `en` | Homophones, capitalization, punctuation, apostrophes |
+| **Persian (Farsi)** | `fa` | Homophones (`ز/ض/ظ/ذ`, `س/ص/ث`), نیم‌فاصله, conversational grammar |
+| **Arabic** | `ar` | Hamza (`أ/إ/آ/ا`), Taa Marbuta (`ة/ه`), Arabic punctuation (`،`, `؟`) |
+| **Turkish** | `tr` | Dotless I (`ı/i`), special vowels (`ö/ü/ğ/ş`), suffixes |
+| **French** | `fr` | Accents (`é/è/ê/ë`), elisions, apostrophe spacing |
+| **German** | `de` | Umlauts (`ä/ö/ü/ß`), noun capitalization, compound words |
+| **Spanish** | `es` | Inverted punctuation (`¿?`, `¡!`), acute accents |
+| **Italian** | `it` | Accent markers, contractions, dialogue punctuation |
+| **Russian** | `ru` | Case endings, hard/soft signs (`ъ/ь`), punctuation |
+| **Chinese** | `zh` | Simplified/Traditional character consistency, sentence pauses |
+| **Japanese** | `ja` | Kanji/Hiragana/Katakana balance, natural sentence segmentation |
+| **Korean** | `ko` | Hangul spacing, particle alignment, honorifics |
+| **Hindi** | `hi` | Matras, conjunct consonants, Devanagari punctuation |
+| **Portuguese** | `pt` | Tildes (`ã/õ`), cedillas (`ç`), European & Brazilian spelling |
+| **Auto-Detect** | `auto` | Automatic language identification across 99+ languages |
 
 ---
 
-## Development & Building
+### ⚡ 3. Multi-Account Failover Pool (Up to 10 Accounts)
+* **100,000 Free Daily Neurons:** Cloudflare Workers AI offers 10,000 free neurons daily per account. By registering up to 10 accounts in the built-in credential manager, you gain **100,000 free daily neurons** — sufficient for transcribing and refining over **1,200,000 words** (60–80 full feature films) every single day for free!
+* **Automated Sticky Hot-Swapping:** When Account #1 reaches its rate limit or neuron ceiling, the engine instantly rotates to Account #2, #3, and beyond without crashing or halting your queue.
+* **Persistent Cooldown Tracking:** Rate-limited accounts enter a smart cooldown until daily reset, ensuring zero wasted retries.
 
+---
+
+### 🎬 4. Broadcast-Standard Subtitle Segmentation
+* **Grammar-Aware Boundaries:** Prevents awkward line wraps after articles (`the`, `a`), prepositions (`in`, `on`, `with`), or conjunctions.
+* **Orphan Word Elimination:** Prevents lonely 1-word cues (e.g. `Sure.`, `Tomorrow?`) by merging them naturally with their parent dialogue.
+* **Speaker Turn Hyphens:** Fast conversational exchanges are formatted with dual-speaker dashes:
+  ```srt
+  12
+  00:01:14,200 --> 00:01:17,500
+  - Are you coming tonight?
+  - Yes, see you at eight.
+  ```
+* **Silence Gap Detection:** Natural pauses $\ge 0.40$s accurately separate distinct phrases.
+
+---
+
+### 📁 5. Batch Processing Manager with Real-Time File Telemetry
+* **Folder & File Queuing:** Batch-import entire seasons or collections of videos (`.mp4`, `.mkv`, `.avi`, `.mov`, `.webm`, `.flv`, `.ts`).
+* **Per-Video Configuration:** Customize start/end minutes, target language, and AI refinement toggle per file, or apply settings to the entire batch in one click.
+* **Real-Time Live Logs:** Non-cumulative, per-file terminal box displays live chunk extraction, Cloudflare latency, and token throughput.
+* **Failure Isolation:** If an individual video has corrupt audio, it is marked as `FAILED` while remaining queue items continue smoothly.
+
+---
+
+### 🔒 6. Security, Zero-Dependency Setup & Portability
+* **100% Portable:** Pre-packaged with static **FFmpeg** and **FFprobe** binaries. No external system installations required.
+* **Hardware-Safe Execution:** Windows DPAPI encryption stores Cloudflare API credentials securely in the Windows Credential Manager — zero plaintext keys on disk.
+* **Accessible Dark Theme:** Modern Windows 11 Fluent dark palette with high-contrast text and responsive controls.
+
+---
+
+## Quick Start & Installation
+
+### Option 1: Pre-Built Portable Executable (Recommended)
+1. Download the latest release from the [Releases](https://github.com/AliDevCore/Online-Subtitle-Generator/releases) page.
+2. Extract `Online-Subtitle-Generator-v*.zip` into any folder.
+3. Launch `Online Subtitle Generator.exe`.
+
+### Option 2: Run from Source
 ```bash
-# Clone the repository
+# 1. Clone the repository
 git clone https://github.com/AliDevCore/Online-Subtitle-Generator.git
 cd "Online Subtitle Generator"
 
-# Install dependencies
+# 2. Install dependencies
 pip install -r requirements-dev.txt
 
-# Run test suite
+# 3. Run the automated test suite (67 tests)
 pytest
 
-# Launch application
+# 4. Launch the desktop studio
 python app/main.py
-
-# Build portable Windows executable locally (optional)
-python packaging/build_windows.py --zip
 ```
 
-### Automated Releases & CI/CD
+---
 
-Releases are built and published automatically via GitHub Actions:
-- Pushing to the `main` branch automatically triggers cloud compilation, test execution, dynamic tag increment, and publishes a new release.
-- For complete release instructions, see the [Release Guide](docs/RELEASE_GUIDE.md).
+## Configuring Cloudflare Credentials
+
+1. Click **🔑 Cloudflare Accounts (Pool)** on the top-right toolbar.
+2. Obtain your free **Account ID** and **API Token** (with *Workers AI Read/Write* permissions) from your [Cloudflare Dashboard](https://dash.cloudflare.com/).
+3. Enter your credentials into Slot 1 (and optionally Slots 2 through 10 for multi-account pooling).
+4. Click **Save Account**. You are ready to generate subtitles!
+
+---
+
+## Automated CI/CD & Compilation
+
+The project features a continuous delivery pipeline powered by **GitHub Actions**:
+* Every commit pushed to the `main` branch automatically triggers headless offscreen testing, semver tag incrementation, PyInstaller bundling, SHA-256 checksum generation, and publishes a new release on GitHub.
+* For more information on release management, see [RELEASE_GUIDE.md](docs/RELEASE_GUIDE.md).
 
 ---
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for complete terms.

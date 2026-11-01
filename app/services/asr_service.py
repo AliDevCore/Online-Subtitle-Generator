@@ -18,6 +18,7 @@ from app.core.srt_parser import SRTParser
 from app.core.types import TimeRange, SubtitleFile, SubtitleCue, AudioChunk, JobStatus
 from app.providers import get_asr_provider
 from app.services.ffmpeg_service import FFmpegService
+from app.services.subtitle_refiner_service import SubtitleRefinerService, DEFAULT_REFINER_MODEL
 
 logger = logging.getLogger("OnlineSub.ASRService")
 
@@ -36,10 +37,17 @@ class ASRService:
         self.resource_ctrl = resource_controller or ResourceController()
 
     @staticmethod
-    def get_default_output_path(video_path: Path | str, suffix: str = ".en.srt", time_range: Optional[TimeRange] = None) -> Path:
+    def get_default_output_path(
+        video_path: Path | str,
+        suffix: Optional[str] = None,
+        time_range: Optional[TimeRange] = None,
+        language: str = "en"
+    ) -> Path:
         """Compute collision-safe output path beside source video."""
         vid = Path(video_path)
         base_name = vid.stem
+        if suffix is None:
+            suffix = f".{language}.srt" if language and language != "auto" else ".srt"
         # For partial transcription, optionally include range in filename if non-zero start
         if time_range and (time_range.start_seconds > 0):
             st_m = int(time_range.start_minutes)
@@ -64,8 +72,11 @@ class ASRService:
         self,
         video_path: Path | str,
         time_range: TimeRange,
-        provider_id: str,
-        model_id: str,
+        provider_id: str = "cloudflare",
+        model_id: str = "@cf/openai/whisper-large-v3-turbo",
+        language: str = "en",
+        refine_subtitles: bool = True,
+        refiner_model: str = DEFAULT_REFINER_MODEL,
         output_srt_path: Optional[Path | str] = None,
         job_id: Optional[str] = None,
         progress_callback: Optional[Callable[[str, int], None]] = None,
@@ -73,7 +84,7 @@ class ASRService:
     ) -> Path:
         """
         Execute full ASR workflow.
-        Returns final path of validated English SRT file.
+        Returns final path of validated SRT file.
         """
         video = Path(video_path)
         if not video.exists():
@@ -83,7 +94,7 @@ class ASRService:
         time_range_tuple = (time_range.start_seconds, time_range.end_seconds)
 
         if output_srt_path is None:
-            output_srt_path = self.get_default_output_path(video, ".en.srt", time_range)
+            output_srt_path = self.get_default_output_path(video, time_range=time_range, language=language)
         output_path = Path(output_srt_path)
 
         # 1. Register job in database
@@ -120,6 +131,7 @@ class ASRService:
         provider = get_asr_provider(
             provider_id=provider_id,
             model_id=model_id,
+            language=language,
             cpu_threads=self.resource_ctrl.get_effective_threads()
         )
         model_info = provider.get_info()
@@ -157,6 +169,7 @@ class ASRService:
                     audio_path=extracted_audio,
                     start_offset_seconds=time_range.start_seconds,
                     duration_seconds=segment_duration,
+                    language=language,
                     cancel_token=cancel_token
                 )
                 chunk_cues_collection.append(sub_file.cues)
@@ -209,6 +222,7 @@ class ASRService:
                         audio_path=chunk_audio,
                         start_offset_seconds=actual_st,
                         duration_seconds=chunk_dur,
+                        language=language,
                         cancel_token=cancel_token
                     )
 
@@ -225,13 +239,28 @@ class ASRService:
                         pass
 
             # 5. Merge and reconcile overlapping chunks
-            report("Merging cues and reconciling timestamps...", 90)
+            report("Merging cues and reconciling timestamps...", 85)
             final_cues = AudioChunker.reconcile_and_merge_cues(chunk_cues_collection)
-            final_sub = SubtitleFile(cues=final_cues, language="en")
+            final_sub = SubtitleFile(cues=final_cues, language=language if language != "auto" else "en")
 
             # Clean trailing punctuation from cues (strip trailing '.', '!', ',', '،' while keeping '?' / '؟')
             for cue in final_sub.cues:
                 cue.text = SRTParser.clean_trailing_punctuation(cue.text)
+
+            # Optional AI Refinement with Google Gemini Flash or Cloudflare Gemma
+            if refine_subtitles and final_sub.cues:
+                refiner = SubtitleRefinerService()
+                engine_name = refiner.get_active_engine_name()
+                report(f"Refining subtitles with {engine_name} (AI Spell & Grammar Fix)...", 88)
+                try:
+                    final_sub.cues = refiner.refine_cues(
+                        cues=final_sub.cues,
+                        language=language,
+                        progress_callback=report,
+                        cancel_token=cancel_token
+                    )
+                except Exception as ref_err:
+                    logger.warning(f"AI subtitle refinement skipped: {ref_err}")
 
             # 6. Validate final SRT
             issues = SRTParser.validate_cues(final_sub.cues, time_range_tuple)
@@ -239,7 +268,7 @@ class ASRService:
                 logger.warning(f"SRT validation notes: {'; '.join(issues)}")
 
             # 7. Write to disk (with fallback to user Documents if directory is write-protected)
-            report(f"Writing final English SRT to {output_path.name}...", 95)
+            report(f"Writing final SRT to {output_path.name}...", 95)
             try:
                 SRTParser.write_file(final_sub, output_path, overwrite=True)
             except (PermissionError, OSError) as write_err:
@@ -250,7 +279,7 @@ class ASRService:
                 SRTParser.write_file(final_sub, output_path, overwrite=True)
 
             self.db.update_job_status(job_id, JobStatus.COMPLETED, output_srt_path=str(output_path))
-            report("English SRT generated successfully!", 100)
+            report("Subtitles generated successfully!", 100)
             return output_path
 
         except Exception as e:

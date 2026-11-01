@@ -69,9 +69,9 @@ def execute_with_resilience(
                 wait_sec = max(15, min(wait_sec, max_delay_seconds))
 
                 sanitized_msg = CredentialManager.sanitize_text(resp.text)
-                clean_reason = f"سهمیه یا محدودیت نرخ سرویس {provider_name} فعال شد (کد {resp.status_code})"
+                clean_reason = f"{provider_name} rate limit or quota reached (HTTP {resp.status_code})"
                 if "quota" in resp_lower:
-                    clean_reason = f"سهمیه موقت سرویس {provider_name} پر شده است. در حال انتظار برای آزادسازی..."
+                    clean_reason = f"{provider_name} temporary quota exhausted. Waiting for quota cooldown..."
 
                 logger.warning(
                     f"[{provider_name}] Rate limited ({resp.status_code}, attempt {attempt}). "
@@ -103,7 +103,7 @@ def execute_with_resilience(
             # Network drops, DNS issues, or connection timeouts
             attempt += 1
             wait_sec = 20
-            clean_reason = f"خطای ارتباط با سرور {provider_name}. تلاش مجدد تا برقراری اینترنت..."
+            clean_reason = f"Network connection error to {provider_name}. Retrying..."
             logger.warning(f"[{provider_name}] Network error: {e}. Retrying in {wait_sec}s...")
 
             for rem in range(wait_sec, 0, -1):
