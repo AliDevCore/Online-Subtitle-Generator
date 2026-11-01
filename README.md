@@ -1,8 +1,6 @@
 # Online Subtitle Generator
 
-<p align="center">
-  <img src="assets/app_icon.png" alt="Online Subtitle Generator Icon" width="128" height="128">
-</p>
+
 
 <p align="center">
   <strong>Next-Generation Multilingual Subtitle Studio powered by Cloudflare Workers AI Whisper, Google Gemini Flash & Gemma 4 26B</strong>
@@ -29,6 +27,26 @@ Unlike conventional speech recognition tools that produce raw, error-prone text 
 2. **Intelligent Linguistic Refinement:** **Google Gemini Flash Multi-Model Rotation Pool** (`gemini-3.5-flash-lite`, `gemini-3-flash`, `gemini-3.8-flash`) and **Google Gemma 4 26B MoE** review the transcribed cues, correcting homophones, spelling typos, grammatical slips, and language-specific orthography (such as Persian *half-spaces / نیم‌فاصله*) while **mathematically preserving** every single cue's start and end timestamps.
 
 Supported by a **Multi-Account Failover Pool** of up to 10 Cloudflare accounts and up to 10 Google Gemini accounts, the application effortlessly handles overnight batch workflows at enterprise speed with **zero monthly subscription costs**.
+
+
+<table align="center" border="0" cellspacing="0" cellpadding="4" style="border-collapse: collapse; border: none;">
+  <tr style="border: none;">
+    <td align="center" style="border: none;">
+      <a href="https://github.com/user-attachments/assets/e3a02370-701f-4d8b-b3cf-ffea3330f1c9" target="_blank">
+        <img width="300" alt="1" src="https://github.com/user-attachments/assets/e3a02370-701f-4d8b-b3cf-ffea3330f1c9" />
+
+      </a>
+    </td>
+    <td align="center" style="border: none;">
+      <a href="https://github.com/user-attachments/assets/5338e424-61e4-48cf-add1-6cdec316106b" target="_blank">
+        <img width="300" alt="2" src="https://github.com/user-attachments/assets/5338e424-61e4-48cf-add1-6cdec316106b" />
+
+      </a>
+    </td>
+  </tr>
+</table>
+
+
 
 ---
 
