@@ -29,18 +29,16 @@ Unlike conventional speech recognition tools that produce raw, error-prone text 
 Supported by a **Multi-Account Failover Pool** of up to 10 Cloudflare accounts and up to 10 Google Gemini accounts, the application effortlessly handles overnight batch workflows at enterprise speed with **zero monthly subscription costs**.
 
 
-<table align="center" border="0" cellspacing="0" cellpadding="4" style="border-collapse: collapse; border: none;">
-  <tr style="border: none;">
-    <td align="center" style="border: none;">
+<table align="center">
+  <tr>
+    <td align="center">
       <a href="https://github.com/user-attachments/assets/e3a02370-701f-4d8b-b3cf-ffea3330f1c9" target="_blank">
         <img width="300" alt="1" src="https://github.com/user-attachments/assets/e3a02370-701f-4d8b-b3cf-ffea3330f1c9" />
-
       </a>
     </td>
-    <td align="center" style="border: none;">
+    <td align="center">
       <a href="https://github.com/user-attachments/assets/5338e424-61e4-48cf-add1-6cdec316106b" target="_blank">
         <img width="300" alt="2" src="https://github.com/user-attachments/assets/5338e424-61e4-48cf-add1-6cdec316106b" />
-
       </a>
     </td>
   </tr>
