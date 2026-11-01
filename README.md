@@ -33,12 +33,12 @@ Supported by a **Multi-Account Failover Pool** of up to 10 Cloudflare accounts a
   <tr>
     <td align="center">
       <a href="https://github.com/user-attachments/assets/e3a02370-701f-4d8b-b3cf-ffea3330f1c9" target="_blank">
-        <img width="300" alt="1" src="https://github.com/user-attachments/assets/e3a02370-701f-4d8b-b3cf-ffea3330f1c9" />
+        <img width="500" alt="1" src="https://github.com/user-attachments/assets/e3a02370-701f-4d8b-b3cf-ffea3330f1c9" />
       </a>
     </td>
     <td align="center">
       <a href="https://github.com/user-attachments/assets/5338e424-61e4-48cf-add1-6cdec316106b" target="_blank">
-        <img width="300" alt="2" src="https://github.com/user-attachments/assets/5338e424-61e4-48cf-add1-6cdec316106b" />
+        <img width="500" alt="2" src="https://github.com/user-attachments/assets/5338e424-61e4-48cf-add1-6cdec316106b" />
       </a>
     </td>
   </tr>
