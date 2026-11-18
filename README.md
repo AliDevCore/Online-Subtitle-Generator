@@ -1,9 +1,11 @@
 # Online Subtitle Generator
 
-
+<p align="center">
+  <img src="assets/app_icon.png" alt="Online Subtitle Generator Icon" width="128" height="128">
+</p>
 
 <p align="center">
-  <strong>Next-Generation Multilingual Subtitle Studio powered by Cloudflare Workers AI Whisper, Google Gemini Flash & Gemma 4 26B</strong>
+  <strong>Next-Generation Multilingual Subtitle Studio powered by Cloudflare Workers AI, OpenAI Whisper Large v3 Turbo & Google Gemma 4 26B</strong>
 </p>
 
 <p align="center">
@@ -11,7 +13,7 @@
   <img src="https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D6.svg?logo=windows" alt="Platform">
   <img src="https://img.shields.io/badge/Python-3.11%20%7C%203.14-3776AB.svg?logo=python" alt="Python">
   <img src="https://img.shields.io/badge/ASR-Whisper%20Large%20v3%20Turbo-F38020.svg?logo=cloudflare" alt="ASR Engine">
-  <img src="https://img.shields.io/badge/AI%20Refinement-Google%20Gemini%20Flash%20%7C%20Gemma%204-4285F4.svg?logo=google" alt="AI Refinement">
+  <img src="https://img.shields.io/badge/AI%20Refinement-Gemma%204%2026B-4285F4.svg?logo=google" alt="AI Refinement">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="License">
 </p>
 
@@ -24,27 +26,9 @@
 Unlike conventional speech recognition tools that produce raw, error-prone text with frequent spelling mistakes and awkward sentence splits, **Online Subtitle Generator** introduces a state-of-the-art **Two-Stage Dual-Engine AI Pipeline**:
 
 1. **Acoustic Speech Recognition:** **OpenAI Whisper Large v3 Turbo** (`@cf/openai/whisper-large-v3-turbo`) on Cloudflare Workers AI decodes audio frames with millisecond-accurate timestamping.
-2. **Intelligent Linguistic Refinement:** **Google Gemini Flash Multi-Model Rotation Pool** (`gemini-3.5-flash-lite`, `gemini-3-flash`, `gemini-3.8-flash`) and **Google Gemma 4 26B MoE** review the transcribed cues, correcting homophones, spelling typos, grammatical slips, and language-specific orthography (such as Persian *half-spaces / نیم‌فاصله*) while **mathematically preserving** every single cue's start and end timestamps.
+2. **Intelligent Linguistic Refinement:** **Google Gemma 4 26B MoE** (`@cf/google/gemma-4-26b-a4b-it`) on Cloudflare Workers AI reviews the transcribed cues, correcting homophones, spelling typos, grammatical slips, and language-specific orthography (such as Persian *half-spaces / نیم‌فاصله*) while **mathematically preserving** every single cue's start and end timestamps.
 
-Supported by a **Multi-Account Failover Pool** of up to 10 Cloudflare accounts and up to 10 Google Gemini accounts, the application effortlessly handles overnight batch workflows at enterprise speed with **zero monthly subscription costs**.
-
-
-<table align="center">
-  <tr>
-    <td align="center">
-      <a href="https://github.com/user-attachments/assets/e3a02370-701f-4d8b-b3cf-ffea3330f1c9" target="_blank">
-        <img width="500" alt="1" src="https://github.com/user-attachments/assets/e3a02370-701f-4d8b-b3cf-ffea3330f1c9" />
-      </a>
-    </td>
-    <td align="center">
-      <a href="https://github.com/user-attachments/assets/5338e424-61e4-48cf-add1-6cdec316106b" target="_blank">
-        <img width="500" alt="2" src="https://github.com/user-attachments/assets/5338e424-61e4-48cf-add1-6cdec316106b" />
-      </a>
-    </td>
-  </tr>
-</table>
-
-
+Supported by a **Multi-Account Failover Pool** of up to 10 Cloudflare accounts, the application effortlessly handles overnight batch workflows at enterprise speed with **zero monthly subscription costs**.
 
 ---
 
@@ -55,7 +39,7 @@ graph LR
     A["🎬 Video / Audio Input"] --> B["⚙️ FFmpeg Audio Extraction<br/>(16kHz Mono Stream)"]
     B --> C["🤖 Stage 1: Cloudflare Whisper Large v3 Turbo<br/>Acoustic Decoding & Millisecond Timestamping"]
     C --> D["📐 Pause-Aware Segmenter<br/>Sentence boundaries, dialogue hyphens, orphan prevention"]
-    D --> E["✨ Stage 2: Google Gemini Flash / Gemma 4 MoE<br/>AI Spell-Check, Homophone Resolution & Grammar Refinement"]
+    D --> E["✨ Stage 2: Cloudflare Gemma 4 26B MoE<br/>AI Spell-Check, Homophone Resolution & Grammar Refinement"]
     E --> F["📄 Flawless .srt Subtitle File<br/>Strict timestamp preservation & pristine orthography"]
 ```
 
@@ -67,8 +51,8 @@ graph LR
 * **Whisper Large v3 Turbo (`@cf/openai/whisper-large-v3-turbo`):**
   * The fastest, most accurate flagship speech recognition model from OpenAI, deployed on Cloudflare's serverless edge infrastructure.
   * Native Voice Activity Detection (VAD) and automated silence truncation eliminate audio hallucination loops.
-* **Google Gemini Flash & Gemma 4 AI Refinement:**
-  * **Google Gemini Flash Multi-Model Pool (Recommended):** High-speed, ultra-accurate proofreading powered by Google's native Gemini models (`gemini-3.5-flash-lite`, `gemini-3-flash-preview`, `gemini-3.8-flash`). Automatically handles spikes in traffic and rate limits by rotating across models.
+* **Gemma 4 26B MoE Subtitle Refinement (`@cf/google/gemma-4-26b-a4b-it`):**
+  * Built on Google Gemma research, this Mixture-of-Experts model activates only 4B parameters per token for blazing-fast inference with the reasoning depth of a 26B model, running natively on Cloudflare Workers AI.
   * **Intelligent Homophone Disambiguation:** Distinguishes sound-alike words using sentence semantics (e.g. Persian `گذار/گزار`, `حیات/حیاط`, `ص/س/ث`, `ز/ض/ظ/ذ`, `تصویر/تصفیر`, `هاله/خاله`, or English `their/there/they're`, `its/it's`).
   * **Orthography & Half-Spaces:** Automatically applies correct typography (e.g., Persian *nim-faseleh* `می‌شود` and compound nouns) without robotic formalization.
   * **Zero-Drift Guarantee:** The LLM refines strictly line-by-line using index anchors. Timestamps, cue counts, and sync remain 100% untouched.

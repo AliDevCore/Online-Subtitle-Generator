@@ -1,5 +1,5 @@
 """
-Tests for SubtitleRefinerService (Google Gemini and Cloudflare Gemma AI proofreader & spell-checker).
+Tests for SubtitleRefinerService (Cloudflare Workers AI Gemma 4 26B AI proofreader and spell-checker).
 """
 
 from unittest.mock import patch, MagicMock
@@ -12,7 +12,6 @@ from app.services.subtitle_refiner_service import SubtitleRefinerService, _LLM_E
 def setup_function():
     _LLM_EXHAUSTED_UNTIL.clear()
     _LLM_INVALID_ACCOUNTS.clear()
-    SubtitleRefinerService._active_gemini_account_index = None
 
 
 def test_parse_llm_output():
@@ -27,48 +26,21 @@ def test_parse_llm_output():
     assert parsed[2] == "امروز می‌خواهیم راجع‌به گزارش صحبت کنیم."
 
 
-@patch("requests.post")
-def test_refine_cues_with_gemini(mock_post):
-    resp = MagicMock()
-    resp.status_code = 200
-    resp.json.return_value = {
-        "candidates": [
-            {
-                "content": {
-                    "parts": [
-                        {"text": "[1] سلام بچه‌ها چطورید؟\n[2] راجع‌به این گزارش صحبت کردیم"}
-                    ]
-                }
-            }
-        ]
-    }
-    mock_post.return_value = resp
-
-    gem_accounts = [{"index": 1, "api_key": "test_gem_key", "configured": True}]
-
-    with patch("app.core.credential_manager.CredentialManager.get_gemini_accounts", return_value=gem_accounts):
-        refiner = SubtitleRefinerService()
-        assert refiner.get_active_engine_name() == "Google Gemini Flash"
-        cues = [
-            SubtitleCue(index=1, start_ms=0, end_ms=2000, text="سلام بچه ها چهتورید؟"),
-            SubtitleCue(index=2, start_ms=2100, end_ms=4500, text="راجب این گذارش صحبت کردیم")
-        ]
-
-        refined = refiner.refine_cues(cues, language="fa")
-
-        # Verify timestamps are 100% untouched
-        assert refined[0].start_ms == 0
-        assert refined[0].end_ms == 2000
-        assert refined[1].start_ms == 2100
-        assert refined[1].end_ms == 4500
-
-        # Verify text was corrected
-        assert refined[0].text == "سلام بچه‌ها چطورید؟"
-        assert refined[1].text == "راجع‌به این گزارش صحبت کردیم"
+def test_parse_llm_output_with_markdown_and_notes():
+    refiner = SubtitleRefinerService()
+    raw = """Here are the corrected versions:
+**[1] سلام چطورید؟**
+*(Correction: Changed چهتورید to چطورید)*
+**[2] بالاخره**
+*(Correction: Changed بلاخره to بالاخره)*"""
+    parsed = refiner._parse_llm_output(raw)
+    assert len(parsed) == 2
+    assert parsed[1] == "سلام چطورید؟"
+    assert parsed[2] == "بالاخره"
 
 
 @patch("requests.post")
-def test_refine_cues_cloudflare_fallback(mock_post):
+def test_refine_cues_homophone_correction(mock_post):
     resp = MagicMock()
     resp.status_code = 200
     resp.json.return_value = {
@@ -87,8 +59,7 @@ def test_refine_cues_cloudflare_fallback(mock_post):
 
     cf_accounts = [{"index": 1, "account_id": "acct_test", "api_key": "tok_test", "configured": True}]
 
-    with patch("app.core.credential_manager.CredentialManager.get_gemini_accounts", return_value=[]), \
-         patch("app.core.credential_manager.CredentialManager.get_cloudflare_accounts", return_value=cf_accounts):
+    with patch("app.core.credential_manager.CredentialManager.get_cloudflare_accounts", return_value=cf_accounts):
         refiner = SubtitleRefinerService()
         assert refiner.get_active_engine_name() == "Cloudflare Workers AI (Gemma 4 26B)"
         cues = [
@@ -115,8 +86,7 @@ def test_refiner_fallback_on_network_failure(mock_post):
 
     cf_accounts = [{"index": 1, "account_id": "acct_test", "api_key": "tok_test", "configured": True}]
 
-    with patch("app.core.credential_manager.CredentialManager.get_gemini_accounts", return_value=[]), \
-         patch("app.core.credential_manager.CredentialManager.get_cloudflare_accounts", return_value=cf_accounts):
+    with patch("app.core.credential_manager.CredentialManager.get_cloudflare_accounts", return_value=cf_accounts):
         refiner = SubtitleRefinerService()
         cues = [
             SubtitleCue(index=1, start_ms=1000, end_ms=3000, text="Original Text")

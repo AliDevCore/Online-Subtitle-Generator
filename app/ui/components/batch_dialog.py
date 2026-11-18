@@ -160,7 +160,7 @@ class BatchDialog(QDialog):
         self.btn_apply_lang_all.clicked.connect(self._apply_lang_to_all)
         lang_bar.addWidget(self.btn_apply_lang_all)
 
-        self.chk_batch_ai_refine = QCheckBox("✨ AI Spell & Grammar Fix (Gemini / Gemma)")
+        self.chk_batch_ai_refine = QCheckBox("✨ AI Spell Fix (Gemma)")
         self.chk_batch_ai_refine.setChecked(True)
         self.chk_batch_ai_refine.setStyleSheet("color: #38bdf8; font-size: 11.5px; font-weight: 500;")
         lang_bar.addWidget(self.chk_batch_ai_refine)

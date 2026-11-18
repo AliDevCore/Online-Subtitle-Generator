@@ -164,7 +164,7 @@ class MainWindow(QMainWindow):
             self.combo_language.setCurrentIndex(idx_en)
         asr_layout.addWidget(self.combo_language)
 
-        self.chk_ai_refinement = QCheckBox("✨ AI Subtitle Refiner & Proofreader (Google Gemini / Gemma)")
+        self.chk_ai_refinement = QCheckBox("✨ Refine Subtitles with Gemma 4 26B (AI Spell & Grammar Fix)")
         self.chk_ai_refinement.setChecked(True)
         self.chk_ai_refinement.setStyleSheet("color: #38bdf8; font-size: 11.5px; font-weight: 500;")
         asr_layout.addWidget(self.chk_ai_refinement)
@@ -320,10 +320,7 @@ class MainWindow(QMainWindow):
             mode_str = f"Chunking: {mins_str}m segments (Silence-aware reconciliation)"
         self.lbl_asr_limits.setText(f"Limits: {info.free_tier_desc} | Mode: {mode_str}")
 
-        from app.services.subtitle_refiner_service import SubtitleRefinerService
-        refiner = SubtitleRefinerService()
-        eng_name = refiner.get_active_engine_name()
-        self.chk_ai_refinement.setText(f"✨ AI Subtitle Refiner & Proofreader ({eng_name})")
+        self.chk_ai_refinement.setText("✨ Refine Subtitles with Gemma 4 26B (AI Spell & Grammar Fix)")
 
     def _browse_video(self):
         file_path, _ = QFileDialog.getOpenFileName(
