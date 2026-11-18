@@ -85,14 +85,16 @@ def test_cloudflare_language_payload(mock_post, tmp_path):
     accounts = [{"index": 1, "account_id": "acct1_1234567890", "api_key": "tok1_1234567890", "configured": True}]
 
     with patch("app.core.credential_manager.CredentialManager.get_cloudflare_accounts", return_value=accounts):
-        # 1. Test Persian ('fa')
+        # 1. Test Persian ('fa') - verifies sensitivity thresholds and omitted initial_prompt
         provider = CloudflareASRProvider(language="fa")
         sub = provider.transcribe(mock_audio, start_offset_seconds=0.0, duration_seconds=1.0)
         assert sub.language == "fa"
         call_kwargs = mock_post.call_args.kwargs
         payload = call_kwargs["json"]
         assert payload["language"] == "fa"
-        assert "سلام" in payload.get("initial_prompt", "")
+        assert payload["no_speech_threshold"] == 0.85
+        assert payload["log_prob_threshold"] == -2.0
+        assert "initial_prompt" not in payload
 
         # 2. Test Auto Detect ('auto') - should omit 'language' so Whisper auto-detects
         provider_auto = CloudflareASRProvider(language="auto")

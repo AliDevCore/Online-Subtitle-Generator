@@ -236,7 +236,7 @@ class FFmpegService:
         start_seconds: float,
         duration_seconds: float,
         output_format: str = "mp3",  # High-efficiency MP3 default to reduce upload bandwidth
-        bitrate: str = "64k",        # 64 kbps mono is optimal for speech ASR
+        bitrate: str = "128k",       # 128 kbps mono preserves full phonetic detail for speech ASR
         sample_rate: int = 16000,
         channels: int = 1,
         cancel_token: Optional[Any] = None

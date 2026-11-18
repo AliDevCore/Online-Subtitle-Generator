@@ -26,7 +26,7 @@ CLOUDFLARE_API_BASE = "https://api.cloudflare.com/client/v4/accounts"
 # Language-specific priming prompts for Whisper to encourage clean punctuation and spelling
 LANGUAGE_PROMPTS: Dict[str, str] = {
     "en": "Hello, welcome. Please transcribe with clear punctuation, commas, periods, question marks, and dialogue.",
-    "fa": "سلام. لطفاً گفتار را با رعایت دقیق علائم نگارشی، نقطه‌گذاری و املای صحیح کلمات بنویسید.",
+    # Note: Persian ('fa') is intentionally omitted to prevent Whisper decoder hallucinations or skipping speech.
     "ar": "مرحبا. يرجى كتابة النص المنطوق بدقة مع علامات الترقيم الصحيحة.",
     "tr": "Merhaba. Lütfen noktalama işaretlerine dikkat ederek doğru bir şekilde yazıya geçirin.",
     "fr": "Bonjour. Veuillez transcrire avec une ponctuation claire, des virgules et des points.",
@@ -199,11 +199,13 @@ class CloudflareASRProvider(BaseASRProvider):
                         payload: Dict[str, Any] = {
                             "audio": b64_audio,
                             "vad_filter": False,
-                            "condition_on_previous_text": False
+                            "condition_on_previous_text": False,
+                            "no_speech_threshold": 0.85,
+                            "log_prob_threshold": -2.0
                         }
                         if target_lang != "auto":
                             payload["language"] = target_lang
-                            if target_lang in LANGUAGE_PROMPTS:
+                            if target_lang != "fa" and target_lang in LANGUAGE_PROMPTS:
                                 payload["initial_prompt"] = LANGUAGE_PROMPTS[target_lang]
                         headers = {
                             "Authorization": f"Bearer {token}",

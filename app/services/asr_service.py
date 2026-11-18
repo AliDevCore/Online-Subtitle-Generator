@@ -156,7 +156,7 @@ class ASRService:
                     start_seconds=time_range.start_seconds,
                     duration_seconds=time_range.duration_seconds,
                     output_format="mp3",
-                    bitrate="64k",
+                    bitrate="128k",
                     sample_rate=16000,
                     channels=1,
                     cancel_token=cancel_token
@@ -203,7 +203,7 @@ class ASRService:
                         start_seconds=actual_st,
                         duration_seconds=chunk_dur,
                         output_format="mp3",
-                        bitrate="64k",
+                        bitrate="128k",
                         sample_rate=16000,
                         channels=1,
                         cancel_token=cancel_token
