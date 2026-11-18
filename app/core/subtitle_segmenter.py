@@ -91,34 +91,31 @@ def is_hallucination_cue(text: str) -> bool:
     if "amaraorg" in clean_lower or "amara org" in clean_lower:
         return True
 
-    # 3. Clause/sentence repetition loops (split on . ? ! , ; -)
+    # 3. Clause/sentence repetition loops (e.g. 'Thank you very much. Thank you very much. Thank you very much.')
+    # A true loop repeats the exact clause 3 or more times and dominates the text.
     clauses = [re.sub(r"[^a-z0-9\s]", "", c.lower()).strip() for c in re.split(r"[\.\?\!\,\;\-\–\—\n]+", t) if len(c.strip().split()) >= 2]
-    if len(clauses) >= 2:
+    if len(clauses) >= 3:
         c_counts = Counter(clauses)
         top_clause, top_c_cnt = c_counts.most_common(1)[0]
-        # Ignore if clause is only allowed exclamation words
         if not all(w in ALLOWED_DIALOGUE_REPETITIONS for w in top_clause.split()):
-            if top_c_cnt >= 2 and (top_c_cnt * len(top_clause.split())) >= len(t.split()) * 0.4:
+            if top_c_cnt >= 3 and (top_c_cnt * len(top_clause.split())) >= len(t.split()) * 0.60:
                 return True
 
-    # 4. Multi-word phrase n-gram loops (n = 2 to 5 words, e.g. 'Thank you very much, thank you very much')
+    # 4. Multi-word phrase n-gram loops (e.g. 'thank you very much' repeated 3+ times)
     words = [w.strip(".,!?:;\"'").lower() for w in t.split() if w.strip(".,!?:;\"'")]
-    if len(words) >= 4:
+    if len(words) >= 6:
         for n in range(2, 6):
-            if len(words) >= n * 2:
+            if len(words) >= n * 3:
                 sliding_ngrams = [" ".join(words[i:i+n]) for i in range(len(words) - n + 1)]
                 c = Counter(sliding_ngrams)
                 top_phrase, top_cnt = c.most_common(1)[0]
-                # If top phrase consists purely of allowed dialogue words (e.g. "no no", "ha ha"), skip!
                 if all(w in ALLOWED_DIALOGUE_REPETITIONS for w in top_phrase.split()):
                     continue
-
-                if top_cnt >= 3:
-                    return True
-                if top_cnt >= 2 and (top_cnt * n) >= len(words) * 0.4:
+                # Require 3+ repetitions covering at least 60% of the cue
+                if top_cnt >= 4 or (top_cnt >= 3 and (top_cnt * n) >= len(words) * 0.60):
                     return True
 
-    # 5. Token-level repetition loops
+    # 5. Token-level repetition loops (e.g. 'you you you you' or 'the the the the')
     if len(words) >= 3:
         max_consecutive = 1
         cur_consecutive = 1
@@ -132,17 +129,15 @@ def is_hallucination_cue(text: str) -> bool:
             else:
                 cur_consecutive = 1
 
-        # Check if the repeated word is a known natural dialogue exclamation
-        if max_consecutive >= 3:
+        if max_consecutive >= 4:
             if rep_word in ALLOWED_DIALOGUE_REPETITIONS and max_consecutive <= 5:
-                pass  # Legitimate dialogue ("No, no, no!", "Run! Run! Run!", "Ha ha ha ha")
+                pass
             else:
                 return True
 
-        # Check dominant token: only flag if not an allowed conversational word
         counts = Counter(words)
         top_word, top_cnt = counts.most_common(1)[0]
-        if top_cnt / len(words) >= 0.7 and len(words) >= 4:
+        if top_cnt / len(words) >= 0.75 and len(words) >= 5:
             if top_word not in ALLOWED_DIALOGUE_REPETITIONS or top_cnt > 5:
                 return True
 

@@ -215,6 +215,10 @@ def test_is_hallucination_cue_filters_zero_letter_and_loops():
     assert is_hallucination_cue("Bye bye bye.") is False
     assert is_hallucination_cue("He was translated by the committee.") is False
     assert is_hallucination_cue("At the end of the day, we won.") is False
+    assert is_hallucination_cue("Day after day, year after year after year") is False
+    assert is_hallucination_cue("The same words, the same fear") is False
+    assert is_hallucination_cue("So bring it, yes bring it") is False
+    assert is_hallucination_cue("My son, my son, get on board with us") is False
 
 
 def test_resegment_cues_eliminates_user_reported_silence_hallucinations():
