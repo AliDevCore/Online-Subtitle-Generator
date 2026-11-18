@@ -1,5 +1,5 @@
 """
-Tests for SubtitleRefinerService (Cloudflare Workers AI Gemma 4 26B AI proofreader and spell-checker).
+Tests for SubtitleRefinerService (Cloudflare Workers AI Llama 3.3 70B AI proofreader and spell-checker).
 """
 
 from unittest.mock import patch, MagicMock
@@ -61,7 +61,7 @@ def test_refine_cues_homophone_correction(mock_post):
 
     with patch("app.core.credential_manager.CredentialManager.get_cloudflare_accounts", return_value=cf_accounts):
         refiner = SubtitleRefinerService()
-        assert refiner.get_active_engine_name() == "Cloudflare Workers AI (Gemma 4 26B)"
+        assert refiner.get_active_engine_name() == "Cloudflare Workers AI (Llama 3.3 70B)"
         cues = [
             SubtitleCue(index=1, start_ms=0, end_ms=2000, text="حیات خانه زیبا بود"),
             SubtitleCue(index=2, start_ms=2100, end_ms=4500, text="راجب این گذارش صحبت کردیم")

@@ -1,6 +1,6 @@
 """
 Subtitle refinement and spelling correction service powered by Cloudflare Workers AI LLMs.
-Uses @cf/google/gemma-4-26b-a4b-it to fix spelling mistakes, homophone errors, grammar,
+Uses @cf/meta/llama-3.3-70b-instruct-fp8-fast to fix spelling mistakes, homophone errors, grammar,
 and half-spaces (نیم‌فاصله) while strictly preserving cue timestamps.
 """
 
@@ -19,7 +19,7 @@ from app.core.types import SubtitleCue, SubtitleFile
 logger = logging.getLogger("OnlineSubtitleGenerator.SubtitleRefiner")
 
 CLOUDFLARE_API_BASE = "https://api.cloudflare.com/client/v4/accounts"
-DEFAULT_REFINER_MODEL = "@cf/google/gemma-4-26b-a4b-it"
+DEFAULT_REFINER_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
 
 # Re-use quota cooldown tracking from provider level
 _LLM_EXHAUSTED_UNTIL: Dict[int, float] = {}
@@ -27,14 +27,14 @@ _LLM_INVALID_ACCOUNTS: set[int] = set()
 
 
 class SubtitleRefinerService:
-    """Refines subtitle text using Cloudflare Workers AI LLMs (@cf/google/gemma-4-26b-a4b-it)."""
+    """Refines subtitle text using Cloudflare Workers AI LLMs (@cf/meta/llama-3.3-70b-instruct-fp8-fast)."""
 
     def __init__(self, model_id: str = DEFAULT_REFINER_MODEL):
         self.model_id = model_id
 
     def get_active_engine_name(self) -> str:
         """Return the active AI proofreading engine."""
-        return "Cloudflare Workers AI (Gemma 4 26B)"
+        return "Cloudflare Workers AI (Llama 3.3 70B)"
 
     def _execute_llm_request(
         self,
@@ -139,47 +139,63 @@ class SubtitleRefinerService:
 
     def _build_system_prompt(self, language: str) -> str:
         lang_code = language.strip().lower()
-        base_prompt = (
-            "You are an expert subtitle proofreader and linguistic editor.\n"
-            "Your task is to correct spelling errors, typos, wrong homophones, punctuation, and grammatical mistakes in the provided subtitle cues.\n"
-            "CRITICAL INSTRUCTIONS:\n"
-            "1. Output line-by-line using the exact format '[index] <text>'. Do NOT add, remove, or reorder any index.\n"
-            "2. Only fix spelling, homophones, typos, and punctuation. Do NOT summarize or change the meaning.\n"
-            "3. Directly output the corrected cues. Do NOT output internal thoughts, chain-of-thought, or markdown explanations."
-        )
 
         if lang_code == "fa":
-            return base_prompt + (
-                "\n\nPersian Language Specific Rules:\n"
-                "- Fix all homophone spelling mistakes (حروف هم‌صدا like گذاردن/گزاردن, راضی/رازی, تصویر/تصفیر, هاله/خاله, اعداد/عداد, ظهر/زهر, ص/س/ث, ز/ض/ظ/ذ, ق/غ, ه/ح).\n"
-                "- Use correct half-space (نیم‌فاصله) where appropriate (e.g. می‌رود، کلمه‌ها، بی‌نقص، سال‌ها، لپ‌تاپ).\n"
-                "- Preserve natural conversational/spoken tone (e.g. if the speaker said 'میخوایم' or 'عجیبن', fix typos or wrong letters without turning it into artificial formal text, but fix 'راجب' to 'راجع‌به' and 'گذارش' to 'گزارش').\n"
-                "- Add commas and question marks correctly based on sentence structure."
+            return (
+                "You are a professional subtitle editor and proofreader.\n"
+                "Review and correct the provided subtitle text according to the following instructions:\n\n"
+                "1. Spelling and Grammar: Fix all spelling mistakes, grammatical errors, incorrect word usage, and speech-to-text transcription errors (e.g. typos, and homophone errors like ص/س/ث, ز/ض/ظ/ذ, ق/غ, ه/ح).\n"
+                "2. Natural Persian: Rewrite awkward, incomplete, or unnatural sentences into fluent, clear, and conversational Persian, while strictly preserving the original speaker's informal tone. Do NOT replace colloquial conversational words (like 'هیچی' or 'میخوایم') with unnatural phrases, and NEVER use non-Persian or foreign characters/words.\n"
+                "3. Contextual Accuracy: Understand the overall subject and context before correcting sentences. Resolve mistranscribed words based on their meaning and context (e.g., کالابرگ, کد پستی, کمیته امداد), not just their raw sound.\n"
+                "4. Content Correction & Fidelity: Identify and correct obvious transcription errors without inventing facts or details. If a phrase is genuinely unclear, use the safest interpretation.\n"
+                "5. Subtitle Structure & Numbering: Strictly output line-by-line using the exact format '[index] <text>'. Preserve all subtitle indices exactly as provided. Do not merge, split, add, or remove subtitle entries.\n"
+                "6. Subtitle Formatting: Keep each subtitle concise and readable. Maintain natural sentence flow across consecutive entries without making individual entries unnecessarily long.\n"
+                "7. Writing Conventions: Use correct half-spaces (نیم‌فاصله), standard Persian punctuation (، ؟), numbers, and standard spelling conventions. Keep the language conversational rather than overly formal.\n\n"
+                "Important requirements:\n"
+                "- Preserve the original meaning and intended message.\n"
+                "- Do not summarize or omit any information.\n"
+                "- Do not translate the subtitles into another language.\n"
+                "- Do not add explanations, comments, or editorial notes.\n"
+                "- Directly output the corrected entries line-by-line using '[index] <text>'."
             )
         elif lang_code == "ar":
-            return base_prompt + (
-                "\n\nArabic Language Specific Rules:\n"
-                "- Fix hamza mistakes (أ/إ/آ/ا) and taa marbuta/ha (ة/ه).\n"
-                "- Fix homophones and common colloquial spelling errors.\n"
-                "- Ensure accurate Arabic punctuation (، ؟)."
+            return (
+                "You are a professional subtitle editor and proofreader.\n"
+                "Review and correct the provided subtitle text according to the following instructions:\n\n"
+                "1. Spelling and Grammar: Fix all spelling errors, grammatical mistakes, hamza (أ/إ/آ/ا), and taa marbuta/ha (ة/ه).\n"
+                "2. Natural Arabic: Ensure fluent, natural sentence structure while preserving natural conversational flow.\n"
+                "3. Contextual Accuracy: Resolve mistranscribed words based on context and meaning.\n"
+                "4. Subtitle Structure: Strictly output line-by-line using the exact format '[index] <text>'. Keep all original indices exactly as provided.\n"
+                "5. Writing Conventions: Use accurate Arabic punctuation (، ؟) and standard conventions.\n\n"
+                "Important requirements:\n"
+                "- Do not summarize, add notes, or change the meaning.\n"
+                "- Directly output the corrected entries line-by-line using '[index] <text>'."
             )
         else:
-            return base_prompt + (
-                "\n\nGeneral Rules:\n"
-                "- Fix spelling errors, typos, capitalization, and punctuation.\n"
-                "- Fix common homophones (e.g., their/there/they're, its/it's)."
+            return (
+                "You are a professional subtitle editor and proofreader.\n"
+                "Review and correct the provided subtitle text according to the following instructions:\n\n"
+                "1. Spelling and Grammar: Fix all spelling mistakes, grammatical errors, and transcription typos.\n"
+                "2. Natural Phrasing: Ensure fluent, clear, and natural sentence flow while preserving the speaker's tone.\n"
+                "3. Contextual Accuracy: Resolve mistranscribed words based on context and meaning.\n"
+                "4. Subtitle Structure: Strictly output line-by-line using the exact format '[index] <text>'. Keep all original indices exactly as provided. Do not merge or split entries.\n"
+                "5. Formatting: Keep each subtitle concise and readable with standard punctuation and capitalization.\n\n"
+                "Important requirements:\n"
+                "- Do not summarize or omit information.\n"
+                "- Do not add explanations, notes, or markdown formatting.\n"
+                "- Directly output the corrected entries line-by-line using '[index] <text>'."
             )
 
     def refine_cues(
         self,
         cues: List[SubtitleCue],
         language: str = "en",
-        batch_size: int = 5,
+        batch_size: int = 200,
         progress_callback: Optional[Callable[[str, int], None]] = None,
         cancel_token: Optional[Any] = None
     ) -> List[SubtitleCue]:
         """
-        Refine subtitle cues text using Gemma 4 LLM in batches.
+        Refine subtitle cues text using Llama 3.3 70B LLM in batches.
         Strictly preserves original timestamps and cue counts.
         """
         if not cues:
@@ -199,7 +215,7 @@ class SubtitleRefinerService:
             pct = 85 + int((b_idx / total_batches) * 12)
             if progress_callback:
                 progress_callback(
-                    f"Refining subtitles with Gemma 4 26B [Batch {b_idx}/{total_batches}]...",
+                    f"Refining subtitles with Llama 3.3 70B [Batch {b_idx}/{total_batches}]...",
                     pct
                 )
 
